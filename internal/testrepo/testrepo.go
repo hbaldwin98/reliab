@@ -58,10 +58,15 @@ func Write(t *testing.T, dir, name, content string) {
 	}
 }
 
-// Git runs a git command in dir.
+// Git runs a git command in dir, with a fixed identity so commits work on a
+// machine with no git user configured (a CI runner).
 func Git(t *testing.T, dir string, args ...string) {
 	t.Helper()
-	if out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput(); err != nil {
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid",
+		"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid")
+	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v %s", args, err, out)
 	}
 }
