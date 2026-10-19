@@ -36,6 +36,8 @@ for dir in $(for f in $files; do in_scope "$f" && dirname "$f"; done | sort -u);
   [ -d "$dir" ] || continue
   report="$out/$(printf '%s' "$dir" | tr / _).json"
   gremlins unleash "./$dir" -o "$report" || exit 1
+  # A package with no mutants (only an embed, say) writes no report.
+  [ -f "$report" ] || continue
   set -- "$@" "$dir=$report"
 done
 # shellcheck disable=SC2086 # filter is empty or two words
