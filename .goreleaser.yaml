@@ -20,6 +20,13 @@ builds:
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
     ldflags: [-s -w]
+  - id: adapter-golangci-lint
+    main: ./cmd/adapters/golangci-lint
+    binary: reliab-adapter-golangci-lint
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ldflags: [-s -w]
   - id: adapter-gremlins
     main: ./cmd/adapters/gremlins
     binary: reliab-adapter-gremlins

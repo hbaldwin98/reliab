@@ -1,0 +1,112 @@
+{
+ "Issues": [
+  {
+   "FromLinter": "errcheck",
+   "Text": "Error return value of `os.Remove` is not checked",
+   "Severity": "",
+   "SourceLines": [
+    "\tos.Remove(\"a\")"
+   ],
+   "Pos": {
+    "Filename": "internal\\okf\\planted.go",
+    "Offset": 58,
+    "Line": 10,
+    "Column": 11
+   },
+   "ExpectNoLint": false,
+   "ExpectedNoLintLinter": ""
+  },
+  {
+   "FromLinter": "errcheck",
+   "Text": "Error return value of `os.Remove` is not checked",
+   "Severity": "",
+   "SourceLines": [
+    "\tos.Remove(\"b\")"
+   ],
+   "Pos": {
+    "Filename": "internal\\okf\\planted.go",
+    "Offset": 74,
+    "Line": 11,
+    "Column": 11
+   },
+   "ExpectNoLint": false,
+   "ExpectedNoLintLinter": ""
+  },
+  {
+   "FromLinter": "govet",
+   "Text": "assign: self-assignment of x",
+   "Severity": "",
+   "SourceLines": [
+    "\tx = x"
+   ],
+   "Pos": {
+    "Filename": "internal\\okf\\planted.go",
+    "Offset": 114,
+    "Line": 16,
+    "Column": 2
+   },
+   "SuggestedFixes": [
+    {
+     "Message": "Remove self-assignment",
+     "TextEdits": [
+      {
+       "Pos": 113,
+       "End": 120,
+       "NewText": null
+      }
+     ]
+    }
+   ],
+   "ExpectNoLint": false,
+   "ExpectedNoLintLinter": ""
+  },
+  {
+   "FromLinter": "unused",
+   "Text": "func plantedA is unused",
+   "Severity": "",
+   "SourceLines": [
+    "func plantedA() {"
+   ],
+   "Pos": {
+    "Filename": "internal\\okf\\planted.go",
+    "Offset": 35,
+    "Line": 9,
+    "Column": 6
+   },
+   "ExpectNoLint": false,
+   "ExpectedNoLintLinter": ""
+  },
+  {
+   "FromLinter": "unused",
+   "Text": "func plantedB is unused",
+   "Severity": "",
+   "SourceLines": [
+    "func plantedB() int {"
+   ],
+   "Pos": {
+    "Filename": "internal\\okf\\planted.go",
+    "Offset": 88,
+    "Line": 14,
+    "Column": 6
+   },
+   "ExpectNoLint": false,
+   "ExpectedNoLintLinter": ""
+  }
+ ],
+ "Report": {
+  "Linters": [
+   {
+    "Name": "errcheck",
+    "Enabled": true
+   },
+   {
+    "Name": "govet",
+    "Enabled": true
+   },
+   {
+    "Name": "ineffassign",
+    "Enabled": true
+   }
+  ]
+ }
+}

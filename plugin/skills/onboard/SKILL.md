@@ -189,8 +189,9 @@ linter or analyzer: judged by exit code they are one finding, which no one
 can classify problem by problem), or write a format reliab does not
 read, need an adapter that writes reliab's findings format (`format: findings`).
 reliab ships these beside its binary and puts them on PATH for profile
-commands: `reliab-adapter-cargo-mutants`, `reliab-adapter-gremlins`,
-`reliab-adapter-insta`, and `reliab-adapter-verify` (Verify snapshots).
+commands: `reliab-adapter-cargo-mutants`, `reliab-adapter-golangci-lint`,
+`reliab-adapter-gremlins`, `reliab-adapter-insta`, and
+`reliab-adapter-verify` (Verify snapshots).
 Each prints its usage with `-h`; outside a profile command they sit beside
 the binary, in `~/.cache/reliab/<version>/` for a release. Prefer one that fits over
 reading the tool's raw output. If none fits and the tool's output is

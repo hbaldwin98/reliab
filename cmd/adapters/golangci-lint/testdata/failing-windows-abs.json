@@ -1,0 +1,112 @@
+{
+ "Issues": [
+  {
+   "FromLinter": "errcheck",
+   "Text": "Error return value of `os.Remove` is not checked",
+   "Severity": "",
+   "SourceLines": [
+    "\tos.Remove(\"a\")"
+   ],
+   "Pos": {
+    "Filename": "C:\\Users\\ci\\src\\reliab\\internal\\okf\\planted.go",
+    "Offset": 54,
+    "Line": 6,
+    "Column": 11
+   },
+   "ExpectNoLint": false,
+   "ExpectedNoLintLinter": ""
+  },
+  {
+   "FromLinter": "errcheck",
+   "Text": "Error return value of `os.Remove` is not checked",
+   "Severity": "",
+   "SourceLines": [
+    "\tos.Remove(\"b\")"
+   ],
+   "Pos": {
+    "Filename": "C:\\Users\\ci\\src\\reliab\\internal\\okf\\planted.go",
+    "Offset": 70,
+    "Line": 7,
+    "Column": 11
+   },
+   "ExpectNoLint": false,
+   "ExpectedNoLintLinter": ""
+  },
+  {
+   "FromLinter": "govet",
+   "Text": "assign: self-assignment of x",
+   "Severity": "",
+   "SourceLines": [
+    "\tx = x"
+   ],
+   "Pos": {
+    "Filename": "C:\\Users\\ci\\src\\reliab\\internal\\okf\\planted.go",
+    "Offset": 110,
+    "Line": 12,
+    "Column": 2
+   },
+   "SuggestedFixes": [
+    {
+     "Message": "Remove self-assignment",
+     "TextEdits": [
+      {
+       "Pos": 109,
+       "End": 116,
+       "NewText": null
+      }
+     ]
+    }
+   ],
+   "ExpectNoLint": false,
+   "ExpectedNoLintLinter": ""
+  },
+  {
+   "FromLinter": "unused",
+   "Text": "func plantedA is unused",
+   "Severity": "",
+   "SourceLines": [
+    "func plantedA() {"
+   ],
+   "Pos": {
+    "Filename": "C:\\Users\\ci\\src\\reliab\\internal\\okf\\planted.go",
+    "Offset": 31,
+    "Line": 5,
+    "Column": 6
+   },
+   "ExpectNoLint": false,
+   "ExpectedNoLintLinter": ""
+  },
+  {
+   "FromLinter": "unused",
+   "Text": "func plantedB is unused",
+   "Severity": "",
+   "SourceLines": [
+    "func plantedB() int {"
+   ],
+   "Pos": {
+    "Filename": "C:\\Users\\ci\\src\\reliab\\internal\\okf\\planted.go",
+    "Offset": 84,
+    "Line": 10,
+    "Column": 6
+   },
+   "ExpectNoLint": false,
+   "ExpectedNoLintLinter": ""
+  }
+ ],
+ "Report": {
+  "Linters": [
+   {
+    "Name": "errcheck",
+    "Enabled": true
+   },
+   {
+    "Name": "govet",
+    "Enabled": true
+   },
+   {
+    "Name": "ineffassign",
+    "Enabled": true
+   }
+  ]
+ }
+}

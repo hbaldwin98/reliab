@@ -43,11 +43,16 @@ roles:
   T11: { applicable: false, reason: "no triggers or procedures; all logic is in Go" }
   T12: { tool: go test -coverprofile with gocover-cobertura, version: v1.3.0, verified: 2026-10-18 }
   T13: { applicable: false, reason: "no read path slated for rewrite" }
-  T14: { tool: golangci-lint, version: v2.15.0, verified: 2026-10-18 }
+  T14: { tool: golangci-lint, version: v2.15.0, verified: 2026-10-18, notes: "its JSON through reliab-adapter-golangci-lint, so each issue is its own finding" }
 
 commands:
   build: go build ./...
-  analyzers: golangci-lint run
+  # Each issue its own finding, with an id that survives moved code; a
+  # config or build error (exit 3, 7) fails the run, not a clean pass.
+  analyzers:
+    run: rm -f .reliab/out/lint.json; golangci-lint run --output.json.path .reliab/out/lint.json ./...; reliab-adapter-golangci-lint -exit $? .reliab/out/lint.json .reliab/out/analyzers.json
+    format: findings
+    output: .reliab/out/analyzers.json
   unit:
     run: gotestsum --junitfile .reliab/out/unit.xml -- {impacted}
     format: junit

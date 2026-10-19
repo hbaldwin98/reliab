@@ -33,8 +33,8 @@ a complete adapter with its tests.
   for a reporter flag in the tool's docs or `--help`. If one exists and the
   tool's exit code is honest, use that format and stop: no adapter.
 - **reliab ships one:** `reliab-adapter-cargo-mutants`,
-  `reliab-adapter-gremlins`, `reliab-adapter-insta`,
-  `reliab-adapter-verify`; each prints its usage with `-h`. Use it if it fits.
+  `reliab-adapter-golangci-lint`, `reliab-adapter-gremlins`,
+  `reliab-adapter-insta`, `reliab-adapter-verify`; each prints its usage with `-h`. Use it if it fits.
 
 Done when you can name the bare command, format, or shipped adapter that
 fits, or say why none does.

@@ -105,8 +105,8 @@ and coverage are kept to the lines changed since the profile's `base`.
 For any other tool, a profile command runs the tool and then an adapter that
 writes reliab's findings format (`schemas/findings.schema.json`), and sets
 `format: findings`. An adapter is any program; reliab ships
-`reliab-adapter-cargo-mutants`, `reliab-adapter-gremlins`,
-`reliab-adapter-insta`, and `reliab-adapter-verify` (snapshot diffs labelled
+`reliab-adapter-cargo-mutants`, `reliab-adapter-golangci-lint`,
+`reliab-adapter-gremlins`, `reliab-adapter-insta`, and `reliab-adapter-verify` (snapshot diffs labelled
 additive-only or values-changed) beside its binary and puts them on PATH for
 profile commands. Adapters share reliab's rules through helpers:
 `reliab snapdiff <accepted> <pending>` labels a snapshot change,

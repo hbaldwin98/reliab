@@ -119,7 +119,7 @@ These keep adapters agreeing with reliab, from any language:
   (writes the file, the mutant keys, the counts) and `pkg/snapdiff`.
 - `reliab verify` puts its own directory first on PATH for profile
   commands, so the adapters reliab ships (`reliab-adapter-cargo-mutants`,
-  `-gremlins`, `-insta`, `-verify`) and `reliab` itself are always found.
+  `-golangci-lint`, `-gremlins`, `-insta`, `-verify`) and `reliab` itself are always found.
   Their source in `cmd/adapters/` is a set of worked examples.
 
 ## Check a findings file

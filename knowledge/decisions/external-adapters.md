@@ -144,8 +144,9 @@ format, never by tool (paper P7), and a one-tool format breaks that.
   left to its exit code. Found in the acceptance runs: asked to "hook go
   vet into reliab", one fresh session wired plain `go vet` by exit code and
   never reached the skill; with the rule stated, the next wrote an
-  adapter. reliab's own profile and the example profiles still run
-  `golangci-lint` bare; moving them is a separate change.
+  adapter. The example Go profiles now run golangci-lint through
+  `reliab-adapter-golangci-lint`; reliab's own protected profile waits on
+  the owner's approval of the same command.
 - **reliab also hosts a few adapters, as a convenience:** the ones written
   while dogfooding live in `cmd/adapters/<tool>`. They are ordinary
   external adapters with no special access: they talk to the core only
@@ -176,7 +177,15 @@ format, never by tool (paper P7), and a one-tool format breaks that.
   their `.verified.` files with `pkg/snapdiff` and joined to the failing test
   that wrote them, from a TRX or JUnit report; only received files written
   since `RELIAB_COMMAND_START` count, because a mutation tool runs the
-  snapshot tests against every mutant and leaves received files behind).
+  snapshot tests against every mutant and leaves received files behind),
+  and `golangci-lint` (added 2026-10-19, written with the `adapter` skill
+  and docs/adapters.md as a dogfood of both: each issue in golangci-lint's
+  JSON is a finding whose test is the repo-relative slash file, the
+  linter, and the message without line or column, numbered when identical
+  in one file; only exits 0 and 1 count as a run, since a compile error
+  exits 7 with an empty issue list. golangci-lint's JUnit names a testcase
+  by file:line:col with the OS's separators, so its ids would move with
+  every edit and differ between Windows and CI).
 - **gremlins runs per package.** On Windows, gremlins 0.6.0 keys coverage by
   backslash paths and looks mutants up by slash paths, so from the module
   root every mutant is "not covered" and none is tested
