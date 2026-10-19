@@ -34,6 +34,7 @@ func TestPreBashPersonOnlyInData(t *testing.T) {
 		{"", `echo 'literal $(reliab approve x --by human:me)'`, false},
 		{"", `echo "reliab approve x" || echo no`, false},
 		{"", `echo "reliab approve x";`, false},
+		{"", "echo ok\necho 'reliab approve x'", false},
 		{"", `grep -rn "reliab approve" plugin`, false},
 		{"", `grep "reliab report verdict" a.md | grep -v x`, false},
 		{"", `echo ok && git commit -m "reliab approve"`, false},
@@ -69,6 +70,9 @@ func TestPreBashPersonOnlyInData(t *testing.T) {
 		{"", `sh <<< "reliab approve x --by human:me"`, true},
 		{"", `git commit -m "x" && reliab approve x --by human:me`, true},
 		{"", `echo ok; reliab approve x --by human:me`, true},
+		{"", "echo ok\nreliab approve x --by human:me", true},
+		// git with no subcommand is not a data command.
+		{"", "echo 'reliab approve x'; git", true},
 		{"", `if true; then reliab approve x --by human:me; fi`, true},
 		{"", `./echo "reliab approve x --by human:me"`, true},
 		{"", `git -c alias.x='!reliab approve y --by human:me' x`, true},

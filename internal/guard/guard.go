@@ -247,7 +247,7 @@ func (r *Repo) PreBash(in hookio.Input) hookio.Decision {
 				"Oracles change only with human approval (R2): leave the diff for a person, classify the finding characterization-diff, and stop.", re.String())}
 		}
 	}
-	if d := r.protectedWrite(in.Cwd, cmd); d.Deny != "" {
+	if d := r.protectedWrite(in.Cwd, cmd, in.ToolName == "PowerShell"); d.Deny != "" {
 		return d
 	}
 	if pushCmd.MatchString(cmd) {
@@ -259,39 +259,55 @@ func (r *Repo) PreBash(in hookio.Input) hookio.Decision {
 // protectedWrite judges each simple command on its own: a path is a write
 // target only as a redirection target, or as an operand after a write verb
 // in the same simple command. So a read that names a protected path or
-// .reliab/ passes, even beside a write elsewhere in the command line.
-func (r *Repo) protectedWrite(cwd, cmd string) hookio.Decision {
-	var targets []string
-	for _, part := range commandSep.Split(cmd, -1) {
-		for _, m := range redirect.FindAllStringSubmatch(part, -1) {
-			targets = append(targets, m[2])
+// .reliab/ passes, even beside a write elsewhere in the command line. A
+// relative path resolves in each directory its simple command may run in
+// (see parts); pwsh says the line is PowerShell.
+func (r *Repo) protectedWrite(cwd, cmd string, pwsh bool) hookio.Decision {
+	if cwd == "" {
+		cwd = r.Root
+	}
+	type target struct {
+		path string
+		cwds []string
+	}
+	var targets []target
+	ps := parts(cwd, cmd, pwsh)
+	for _, p := range ps {
+		for _, m := range redirect.FindAllStringSubmatch(p.text, -1) {
+			targets = append(targets, target{m[2], p.cwds})
 		}
-		if loc := writeVerb.FindStringIndex(part); loc != nil {
-			targets = append(targets, tokenSep.Split(part[loc[1]:], -1)...)
+		if loc := writeVerb.FindStringIndex(p.text); loc != nil {
+			for _, t := range tokenSep.Split(p.text[loc[1]:], -1) {
+				targets = append(targets, target{t, p.cwds})
+			}
 		}
 	}
 	for _, t := range targets {
-		rel, ok := r.target(cwd, t)
-		if !ok {
-			continue
-		}
-		if g, hit := r.isProtected(rel); hit {
-			return hookio.Decision{Deny: protectedReason(rel, g)}
+		for _, dir := range t.cwds {
+			rel, ok := r.target(dir, t.path)
+			if !ok {
+				continue
+			}
+			if g, hit := r.isProtected(rel); hit {
+				return hookio.Decision{Deny: protectedReason(rel, g)}
+			}
 		}
 	}
 	// A directory holding an oracle counts only as an argument of a command
 	// that rewrites or removes a whole directory, in its own simple command.
-	for _, part := range commandSep.Split(cmd, -1) {
-		if !dirVerb.MatchString(part) {
+	for _, p := range ps {
+		if !dirVerb.MatchString(p.text) {
 			continue
 		}
-		for _, t := range tokenSep.Split(part, -1) {
-			rel, ok := r.target(cwd, t)
-			if !ok {
-				continue
-			}
-			if g, hit := r.holdsProtected(rel); hit {
-				return hookio.Decision{Deny: protectedReason(rel, g)}
+		for _, t := range tokenSep.Split(p.text, -1) {
+			for _, dir := range p.cwds {
+				rel, ok := r.target(dir, t)
+				if !ok {
+					continue
+				}
+				if g, hit := r.holdsProtected(rel); hit {
+					return hookio.Decision{Deny: protectedReason(rel, g)}
+				}
 			}
 		}
 	}

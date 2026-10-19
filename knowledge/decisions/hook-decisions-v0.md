@@ -45,7 +45,19 @@ generated:
      2026-10-18 a write verb anywhere in the line made every path-like word
      a target, so an onboarding session had three reads denied, such as
      `ls .reliab/out/x` and `git diff -- '*.verified.*'` beside an unrelated
-     `rm`;
+     `rm`. A relative path resolves where its simple command runs: a `cd`,
+     `pushd`, or `Set-Location` to one literal directory that exists and
+     can be entered moves the commands joined to it by `&&`, judged both at
+     the directory as named and as resolved through symlinks (`env -C` and
+     `--directory` add theirs). Never outside the repository unless the line
+     surely runs it there: `;`, a newline, `||`, a pipe, or a background `&`
+     ends what a `cd` moves; any doubt (a variable, `cd -`, `popd`, a loop,
+     a subshell or brace group, a separator in quotes or after a backslash,
+     a comment, a heredoc, `eval` or `source`, an alias or function, a
+     PowerShell script, `CDPATH`, a non-ASCII character) judges from the
+     session's directory. Until 2026-10-19 every relative path was judged
+     from the session's directory, so `cd <scratch repo> && git checkout -q
+     -- .` was denied, and `cd snapshots && rm s.txt` was not;
   3. on `git push` or `gh pr create` anywhere in the command, apply the
      [pre-push gate](/decisions/pre-push-v0.md).
 - **stop**: allow when `stop_hook_active` is set. Block when product-class
