@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -301,11 +300,11 @@ func repoRel(root, p string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	rel, err := filepath.Rel(root, abs)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	rel, ok := gitx.Rel(root, abs)
+	if !ok {
 		return "", fmt.Errorf("%s is outside the repository", p)
 	}
-	return filepath.ToSlash(rel), nil
+	return rel, nil
 }
 
 // newVersionCmd prints the version alone, the one .reliab-version pins and

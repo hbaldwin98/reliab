@@ -486,14 +486,14 @@ func cleanScope(root string, paths []string) ([]string, error) {
 		if !filepath.IsAbs(abs) {
 			abs = filepath.Join(root, p)
 		}
-		rel, err := filepath.Rel(root, abs)
-		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		rel, ok := gitx.Rel(root, abs)
+		if !ok {
 			return nil, fmt.Errorf("--scope %s is outside the repository", p)
 		}
 		if _, err := os.Stat(abs); err != nil {
 			return nil, fmt.Errorf("--scope %s: %w", p, err)
 		}
-		out = append(out, filepath.ToSlash(rel))
+		out = append(out, rel)
 	}
 	return out, nil
 }

@@ -70,11 +70,7 @@ func (r *Repo) rel(cwd, p string) (string, bool) {
 		}
 		p = filepath.Join(base, p)
 	}
-	rel, err := filepath.Rel(r.Root, p)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", false
-	}
-	return filepath.ToSlash(rel), true
+	return gitx.Rel(r.Root, p)
 }
 
 // isProtected reports whether the repo-relative path is, or is a directory
