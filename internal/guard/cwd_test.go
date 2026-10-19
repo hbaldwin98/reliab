@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hbaldwin98/reliab/internal/hookio"
 	"github.com/hbaldwin98/reliab/internal/testrepo"
@@ -209,6 +210,38 @@ func TestPartsGitBashDrive(t *testing.T) {
 	}
 	if got := parts(session, "cd "+filepath.ToSlash(out[len(vol):])+" && rm x", false)[1].cwds[0]; got != session {
 		t.Errorf("a rooted path with no drive went to %q, want the session's", got)
+	}
+}
+
+// GNU Bash manual §3.1.2.3 Double Quotes: inside double quotes a backslash
+// followed by a backslash is one backslash. So `cd "<dir>\\sub"` names
+// `<dir>\sub`, a path with a backslash in it, which the hook does not follow
+// (fail closed, per the rule at the top of cwd.go), and words reads the
+// pair once. A words that re-read the pair would never return, so the call
+// runs under a deadline, and a miss ends the test binary instead of leaving
+// it to spin.
+func TestWordsEscapedBackslashInDoubleQuotes(t *testing.T) {
+	session, out := t.TempDir(), scratch(t)
+	o := filepath.ToSlash(out)
+	type result struct {
+		ws []string
+		ps []part
+	}
+	done := make(chan result, 1)
+	go func() {
+		done <- result{words(`echo "a\\b" c`, false), parts(session, `cd "`+o+`\\sub" && rm x`, false)}
+	}()
+	var r result
+	select {
+	case r = <-done:
+	case <-time.After(2 * time.Second):
+		panic(`words did not return on an escaped backslash inside double quotes`)
+	}
+	if want := []string{"echo", `a\b`, "c"}; strings.Join(r.ws, "|") != strings.Join(want, "|") {
+		t.Errorf("words = %q, want %q", r.ws, want)
+	}
+	if len(r.ps) != 2 || r.ps[1].cwds[0] != session {
+		t.Errorf("a cd to a quoted path with a backslash was followed: %+v", r.ps)
 	}
 }
 

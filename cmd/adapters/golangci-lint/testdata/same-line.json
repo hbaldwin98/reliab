@@ -1,0 +1,29 @@
+{
+ "Issues": [
+  {
+   "FromLinter": "errcheck",
+   "Text": "Error return value of `os.Remove` is not checked",
+   "SourceLines": [
+    "\tos.Remove(\"a\"); os.Remove(\"b\")"
+   ],
+   "Pos": {
+    "Filename": "internal\\okf\\planted.go",
+    "Line": 6,
+    "Column": 27
+   }
+  },
+  {
+   "FromLinter": "errcheck",
+   "Text": "Error return value of `os.Remove` is not checked",
+   "SourceLines": [
+    "\tos.Remove(\"a\"); os.Remove(\"b\")"
+   ],
+   "Pos": {
+    "Filename": "internal\\okf\\planted.go",
+    "Line": 6,
+    "Column": 11
+   }
+  }
+ ],
+ "Report": {}
+}

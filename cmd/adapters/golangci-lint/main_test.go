@@ -84,6 +84,30 @@ func TestFailing(t *testing.T) {
 	}
 }
 
+// docs/adapters.md ("When two findings would share a name, number the later
+// ones (#2), (#3), in source order") and
+// knowledge/decisions/external-adapters.md (numbered in source order when
+// several share it): two identical issues on one line are numbered by
+// column, whatever order golangci-lint lists them in. testdata/same-line.json
+// is hand-written in failing.json's shape: os.Remove at columns 27 and 11 of
+// line 6, listed right one first.
+func TestSameLineNumberedByColumn(t *testing.T) {
+	fs, ok, errOut := adapt(t, "1", "same-line.json", ".")
+	if !ok || len(fs) != 2 {
+		t.Fatalf("same-line: %v %s", fs, errOut)
+	}
+	name := "internal/okf/planted.go: errcheck: Error return value of `os.Remove` is not checked"
+	want := []findings.Finding{
+		{Test: name, Location: "internal/okf/planted.go:6:11"},
+		{Test: name + " (#2)", Location: "internal/okf/planted.go:6:27"},
+	}
+	for i, w := range want {
+		if fs[i].Test != w.Test || fs[i].Location != w.Location {
+			t.Errorf("finding %d = %q at %s, want %q at %s", i, fs[i].Test, fs[i].Location, w.Test, w.Location)
+		}
+	}
+}
+
 // docs/adapters.md: a finding keeps its id when code above it moves, and
 // on any OS: Windows backslashes, absolute paths under the root, and Linux
 // slashes give the same tests.
