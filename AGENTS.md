@@ -6,7 +6,7 @@
 - Read `reliab report route` and act per kind.
 - Write properties from intent. Each property cites its source in a comment: a ticket, a doc, a reviewed rule card, or a caller that depends on the behavior.
 - Reproduce every failure from its seed, shrink it, and classify it before reporting: `reliab findings classify <id> --kind <kind> --reason "..."`.
-- Commit a failing case your property tool saves under a protected path (a regression seed) with its fix, and list it as a question for a human: a person approves it with `reliab approve <path>`.
+- Commit a failing case your property tool saves under a protected path (a regression seed) with its fix, and list it as a question for a human: a person approves it with `reliab approve <path>`. The tool writes it during the failing run; you only commit it. You cannot copy one in from another branch or clone: re-run the failing property against the code before the fix so the tool writes it again, or stop and give the person the exact commands to copy it.
 - Before reporting, check each new test can fail: no swallowed exceptions, no missing assertions, and the generator reaches the interesting cases.
 - Report what you ran, what you skipped, and why.
 
