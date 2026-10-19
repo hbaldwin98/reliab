@@ -185,8 +185,8 @@ Record each role as one of four:
   and the date. Then probe the next candidate.
 
 Tools that exit 0 with failures, report several separate problems (a
-linter or analyzer: judged by exit code they share one finding id, so an
-acknowledgement of one hides the next), or write a format reliab does not
+linter or analyzer: judged by exit code they are one finding, which no one
+can classify problem by problem), or write a format reliab does not
 read, need an adapter that writes reliab's findings format (`format: findings`).
 reliab ships these beside its binary and puts them on PATH for profile
 commands: `reliab-adapter-cargo-mutants`, `reliab-adapter-gremlins`,

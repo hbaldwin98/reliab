@@ -62,6 +62,23 @@ findings bookkeeping that would hold the classification is deferred from v0.
   afresh, so a stale "it was the machine" cannot hide a real defect. Found
   on 2026-10-18, when Windows ran out of consoles during a mutation run and
   agents filed the resulting pty failures as legacy quirks.
+- **A command-level finding carries only while its failure is the same**
+  (added 2026-10-19). A finding with no test, `F-<command>`, is made from a
+  failing exit code (or a tool that failed without reporting a test), so it
+  has one id however the command fails. verify stores a `fingerprint` with
+  it: a hash of its message and observed output with run-to-run noise
+  removed (line endings and trailing spaces, the repository root and the
+  temp directory, other absolute paths, timestamps, durations, memory
+  addresses). Its classification and acknowledgement carry to the next run
+  only when the fingerprint matches; otherwise it comes back open and
+  unclassified, with `reopened` saying it changed since it was classified
+  or acknowledged, and `reliab report route` prints that. An earlier report
+  with no fingerprint (before report 0.9.0) cannot show the failure is the
+  same, so nothing carries from it, and `reopened` says so. Findings with
+  their own test keep their classification by id, as before. Found in the
+  adapter acceptance runs: a linter wired by exit code reported every
+  problem as `F-analyzers`, so a person's acknowledgement of one
+  pre-existing problem covered every later one.
 - `below-threshold` (added 2026-10-18) is a mutation score short of the
   profile's threshold or a baseline scope's score. verify derives it from
   the counts and the survivors; it is never classified, routes the agent to

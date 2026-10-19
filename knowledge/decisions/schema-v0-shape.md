@@ -80,6 +80,10 @@ format and strictness. Writing the schemas forced field-level choices.
   Report 0.7.0 adds the skip reason `not-relevant` and a command's
   `relevance`; the profile adds a command's `relevant_when`
   ([relevance-skips](/decisions/relevance-skips.md)).
+  Report 0.9.0 adds a finding's `fingerprint` and `reopened`: a
+  command-level finding carries its classification only while its
+  fingerprint is the same
+  ([finding-classification](/decisions/finding-classification.md)).
   An optional `diff` (`additive-only` or `values-changed`) labels a snapshot or capture
   that no longer matches, in the report (0.3.0) and the findings format
   (0.2.0) alike ([snapshot-diff-labels](/decisions/snapshot-diff-labels.md)).

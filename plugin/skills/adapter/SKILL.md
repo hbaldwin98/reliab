@@ -24,11 +24,10 @@ a complete adapter with its tests.
 
 - **The tool is pass or fail (a build):** a bare command, judged by its
   exit code, is enough. A tool that reports several separate problems is
-  not: judged by exit code, every problem shares the command's one finding
-  id, so a classification or a person's acknowledgement of one carries to
-  every later failure of that command and hides new problems. It needs an
-  adapter, so each problem gets its own id, even when its exit code is
-  honest.
+  better with an adapter, even when its exit code is honest: judged by exit
+  code, all its problems are one finding, which reopens whenever any of
+  them changes, so none can be classified or acknowledged on its own. An
+  adapter gives each problem its own id.
 - **The tool can write a format reliab reads:** JUnit XML, TRX,
   mutation-testing-elements JSON (`mutation-report`), or Cobertura. Look
   for a reporter flag in the tool's docs or `--help`. If one exists and the

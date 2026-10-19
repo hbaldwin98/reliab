@@ -272,12 +272,12 @@ func Run(ctx context.Context, opt Options) (*report.Report, string, error) {
 	}
 
 	prev, _ := report.Read(report.LatestPath(opt.Root, reportTier))
-	carryForward(rep, prev)
+	carryForward(rep, prev, opt.Root)
 	// Scores read the carried classifications: a survivor a person confirmed
 	// equivalent leaves the count. A shortfall then keeps a person's
 	// acknowledgement only while its numbers are the same.
 	mutscore.Apply(rep, prof, baseline)
-	carryForward(rep, prev)
+	carryForward(rep, prev, opt.Root)
 	for _, c := range rep.Run.Commands {
 		for _, ch := range mutscore.Checks(c.ID, c.Score) {
 			if ch.Unmeasured {
@@ -564,7 +564,17 @@ func matchAny(globs []string, path string) bool {
 // carryForward keeps the agent's classification and any human
 // acknowledgement for findings that are still present, matched by their
 // stable id. A finding that disappeared is simply gone.
-func carryForward(rep *report.Report, prev *report.Report) {
+//
+// A command-level finding (no test: the command failed as a whole) has one
+// id however it failed, so it carries only while its fingerprint is the
+// same; otherwise it is judged afresh and says why
+// (knowledge/decisions/finding-classification.md).
+func carryForward(rep *report.Report, prev *report.Report, root string) {
+	for i, f := range rep.Findings {
+		if f.Test == "" {
+			rep.Findings[i].Fingerprint = report.Fingerprint(f, root)
+		}
+	}
 	if prev == nil {
 		return
 	}
@@ -578,6 +588,12 @@ func carryForward(rep *report.Report, prev *report.Report) {
 		// machine is fixed, a failure there is judged afresh.
 		if !ok || o.Kind == report.KindEnvironment {
 			continue
+		}
+		if f.Test == "" && (o.Classification != nil || o.Acknowledged != nil) {
+			if why := changedFailure(o, f); why != "" {
+				rep.Findings[i].Reopened = why
+				continue
+			}
 		}
 		if o.Classification != nil {
 			rep.Findings[i].Kind = o.Kind
@@ -626,4 +642,22 @@ func budgetText(s int) string {
 		return "none"
 	}
 	return (time.Duration(s) * time.Second).String()
+}
+
+// changedFailure says why a command-level finding's earlier classification
+// or acknowledgement does not carry, or "" when the failure is the same.
+// An earlier report without a fingerprint cannot show that, so nothing
+// carries from it.
+func changedFailure(old, cur report.Finding) string {
+	what := "classified " + old.Kind
+	if old.Acknowledged != nil {
+		what = "acknowledged by " + old.Acknowledged.By
+	}
+	if old.Fingerprint == "" {
+		return "it was " + what + " in a report that recorded no fingerprint of the failure, so that decision was not carried; judge it afresh"
+	}
+	if old.Fingerprint != cur.Fingerprint {
+		return "the failure changed since it was " + what + "; judge it afresh"
+	}
+	return ""
 }

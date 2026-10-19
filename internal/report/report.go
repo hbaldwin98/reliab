@@ -18,7 +18,7 @@ import (
 )
 
 // SchemaVersion is the report schema version this build writes.
-const SchemaVersion = "0.8.0"
+const SchemaVersion = "0.9.0"
 
 // Dir is where reports live, relative to the repo root. Only reliab writes
 // here; see knowledge/decisions/report-storage.md.
@@ -215,6 +215,15 @@ type Finding struct {
 	Score          *int            `json:"score,omitempty"`
 	Classification *Classification `json:"classification,omitempty"`
 	Acknowledged   *Acknowledged   `json:"acknowledged,omitempty"`
+	// Fingerprint identifies a command-level finding's failure (one with no
+	// Test): a hash of its message and observed output without noise. Its
+	// classification and acknowledgement carry to the next run only while
+	// the fingerprint is the same (knowledge/decisions/finding-classification.md).
+	Fingerprint string `json:"fingerprint,omitempty"`
+	// Reopened says why an earlier classification or acknowledgement of this
+	// finding was not carried: the failure changed, or the earlier report
+	// had no fingerprint.
+	Reopened string `json:"reopened,omitempty"`
 }
 
 type Classification struct {

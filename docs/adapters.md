@@ -13,10 +13,11 @@ installed version. In Claude Code, the plugin's `adapter` skill
 
 **When you need one.** A pass-or-fail tool, such as a build, needs no
 adapter: a bare command is judged by its exit code. A tool that reports
-several separate problems (a linter, an analyzer, a scanner) needs one even
-when its exit code is honest. Judged by exit code, every problem shares the
-command's single finding id, so a classification or acknowledgement of one
-carries to every later failure of the command and hides new problems.
+several separate problems (a linter, an analyzer, a scanner) is better with
+one even when its exit code is honest. Judged by exit code, all its problems
+are one finding, `F-<command>`: a classification of it holds only while the
+command fails the same way, so a new problem reopens it, but the problems
+cannot be classified one by one. An adapter gives each its own id.
 
 ## The contract
 

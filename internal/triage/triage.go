@@ -301,6 +301,9 @@ func Route(w io.Writer, root string) (int, error) {
 			}
 		}
 		fmt.Fprintf(w, "\n%s  [%s]  %s\n  -> %s\n", f.ID, f.Kind, subject, action)
+		if f.Reopened != "" {
+			fmt.Fprintf(w, "  reopened: %s\n", f.Reopened)
+		}
 		if f.Location != "" {
 			fmt.Fprintf(w, "  at %s\n", f.Location)
 		}

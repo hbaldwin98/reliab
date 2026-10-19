@@ -59,7 +59,9 @@ generated:
   a nonzero exit yields one finding carrying the log tail. Ids are stable,
   `F-<command>` or `F-<command>-<hash of test name>`, so the next run of the
   same tier carries forward the agent's classification and any human
-  acknowledgement for findings that are still present.
+  acknowledgement for findings that are still present; an `F-<command>`
+  finding only while its failure's fingerprint is the same
+  ([finding-classification](/decisions/finding-classification.md)).
 - **Tree hash.** Taken at the start of the run, always excluding `.reliab/**`
   so reliab's own output never makes a report stale
   ([report-freshness](/decisions/report-freshness.md)).

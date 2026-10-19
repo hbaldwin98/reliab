@@ -200,7 +200,9 @@
             "by": { "type": "string", "minLength": 1 },
             "at": { "type": "string", "format": "date-time" }
           }
-        }
+        },
+        "fingerprint": { "type": "string", "pattern": "^[0-9a-f]{16}$", "description": "For a finding with no test (the command failed as a whole): a hash of its message and observed output without run-to-run noise. Its classification and acknowledgement carry to the next run only while this is the same." },
+        "reopened": { "type": "string", "description": "Why an earlier classification or acknowledgement of this finding was not carried: the failure changed, or the earlier report had no fingerprint." }
       }
     }
   }

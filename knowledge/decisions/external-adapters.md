@@ -131,12 +131,16 @@ format, never by tool (paper P7), and a one-tool format breaks that.
   through `reliab verify --only`. A committed profile is protected, so the
   agent hands the person the command to add. The onboard skill sends a
   small adapter here and keeps a large one an open question.
-- **A tool that reports several separate problems needs an adapter even
-  when its exit code is honest** (added 2026-10-19). Judged by exit code,
-  every problem shares the command's one finding id (`F-<command>`), and
-  classifications carry forward by id, so a person's acknowledgement of one
-  pre-existing lint problem covers every later failure of the command,
-  new problems included. Only a pass-or-fail tool, such as a build, is
+- **A tool that reports several separate problems is better with an
+  adapter, even when its exit code is honest** (added 2026-10-19). Judged by
+  exit code, every problem shares the command's one finding id
+  (`F-<command>`). Classifications carried by id alone, so a person's
+  acknowledgement of one pre-existing lint problem covered every later
+  failure of the command, new problems included; a command-level finding
+  now carries only while its failure's fingerprint is the same
+  ([finding-classification](/decisions/finding-classification.md)), so
+  that is no longer a hazard, but its problems still cannot be classified
+  one by one. Only a pass-or-fail tool, such as a build, is
   left to its exit code. Found in the acceptance runs: asked to "hook go
   vet into reliab", one fresh session wired plain `go vet` by exit code and
   never reached the skill; with the rule stated, the next wrote an
