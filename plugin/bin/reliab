@@ -1,0 +1,34 @@
+#!/bin/sh
+# reliab launcher. Runs the reliab binary matching this plugin's version,
+# installing it into a per-version cache on first use.
+#   RELIAB_BIN      run this binary instead (local development)
+#   RELIAB_VERSION  override the version (default: the plugin's version)
+#   RELIAB_CACHE    cache root (default: ${XDG_CACHE_HOME:-$HOME/.cache}/reliab)
+# Plugin version 0.0.0 means unreleased: the launcher then runs the local
+# build at ~/.reliab/dev/reliab and never downloads.
+set -eu
+here=$(cd "$(dirname "$0")" && pwd)
+if [ -n "${RELIAB_BIN:-}" ]; then
+  exec "$RELIAB_BIN" "$@"
+fi
+version=${RELIAB_VERSION:-$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$here/../.claude-plugin/plugin.json" | head -n 1)}
+version=v${version#v}
+export RELIAB_PLUGIN_VERSION="$version"
+case $(uname -s) in
+  MINGW*|MSYS*|CYGWIN*) ext=.exe ;;
+  *) ext= ;;
+esac
+if [ "$version" = v0.0.0 ]; then
+  dev="$HOME/.reliab/dev/reliab$ext"
+  if [ -x "$dev" ]; then
+    exec "$dev" "$@"
+  fi
+  echo "reliab: this is an unreleased plugin (0.0.0) and $dev does not exist." >&2
+  echo "reliab: build it with scripts/dev-build.sh in the reliab repo (or set RELIAB_BIN)" >&2
+  exit 1
+fi
+cache=${RELIAB_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/reliab}/$version
+if [ ! -x "$cache/reliab$ext" ]; then
+  sh "$here/reliab-install" "$version" "$cache" >&2
+fi
+exec "$cache/reliab$ext" "$@"

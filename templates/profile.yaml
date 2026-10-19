@@ -1,0 +1,88 @@
+# reliab stack profile. See https://github.com/hbaldwin98/reliab
+# Every filling is a claim until stage S0 verifies it on this codebase:
+# probe each role, swap failures, and record them under corrections.
+# The plugin's /reliab:onboard skill walks an agent through S0.
+schemaVersion: 0.1.0
+name: %NAME%
+starting_condition: %CONDITION% # greenfield | maintained | legacy
+
+# Path classes. A file matching none of them counts as product.
+paths:
+  product: ["src/**"]
+  tests: ["tests/**"]
+  ignore: ["**/*.md"]
+
+# Oracles that change only with human approval (R2). Agents are denied
+# edits here; reliab gate protected flags changes in CI. The profile guards
+# itself: its thresholds, relevance rules, and baseline say what a change
+# must pass. That takes effect once it is committed; until then the agent
+# onboarding the repository may write it. Later edits need a person's
+# reliab approve.
+protected_paths: [reliability-profile.yaml]
+
+# Shell commands (RE2 regular expressions) that approve or rewrite one of
+# those oracles without naming its path, such as a snapshot tool's accept
+# command. Agents are denied them. Example for insta:
+#   ['\bcargo\s+insta\s+(accept|review)\b', 'INSTA_UPDATE\s*=\s*[''"]?(always|auto|new|unseen)']
+protected_commands: []
+
+# Text (RE2 regular expressions) agents may not add to any file, such as a
+# snapshot tool's auto-accept switch in test code, which approves an oracle
+# at runtime. Edits that add a match are denied; gate protected stays the
+# backstop.
+protected_edits: []
+
+# The ref a branch is measured from, for changed_only commands, {base}, and
+# report summary. Default: origin/HEAD, origin/main, main, then master.
+# base: main
+
+# Paths whose changes do not make a report stale.
+freshness_exclude: ["**/*.md"]
+
+# One entry per tool role: { tool: ..., version: ..., verified: YYYY-MM-DD }
+# or { applicable: false, reason: ... }.
+roles:
+  T1: { applicable: false, reason: "not filled yet (S0): unit test framework" }
+  T2: { applicable: false, reason: "not filled yet (S0): property-based testing" }
+  T3: { applicable: false, reason: "not filled yet (S0): snapshot testing" }
+  T4: { applicable: false, reason: "not filled yet (S0): mutation testing" }
+  T5: { applicable: false, reason: "not filled yet (S0): in-process test host" }
+  T6: { applicable: false, reason: "not filled yet (S0): typed API client" }
+  T7: { applicable: false, reason: "not filled yet (S0): API fuzzing" }
+  T8: { applicable: false, reason: "not filled yet (S0): network fault injection" }
+  T9: { applicable: false, reason: "not filled yet (S0): external HTTP stubs" }
+  T10: { applicable: false, reason: "not filled yet (S0): data-store fault injection" }
+  T11: { applicable: false, reason: "not filled yet (S0): data-store-level tests" }
+  T12: { applicable: false, reason: "not filled yet (S0): coverage" }
+  T13: { applicable: false, reason: "not filled yet (S0): shadow experiments" }
+  T14: { applicable: false, reason: "not filled yet (S0): static analysis" }
+
+# What verify runs; the only place a tool is named. A string is judged by
+# exit code; an object adds a result file and its format (junit, trx,
+# mutation-report, cobertura, findings). output may be a glob when a tool
+# writes one file per project. changed_only keeps a mutation-report or
+# cobertura output to the lines changed since base. A failed build skips
+# the rest.
+# Placeholders: {impacted}, {cases}, {seed}, {scope}, {base}.
+commands: {}
+#  build: <build command>
+#  analyzers: <lint command>
+#  unit:
+#    run: <test command> {impacted}
+#    format: junit
+#    output: .reliab/out/unit/*.xml
+#  mutation_changed:
+#    run: <mutation tool, writing mutation-testing-elements JSON>
+#    format: mutation-report
+#    output: .reliab/out/mutation.json
+#    changed_only: true
+
+# What {impacted} expands to in the inner tier.
+# impacted:
+#   all: <args selecting every test>
+#   separator: " "   # joins several matched entries' args, e.g. "|" for a test filter
+#   map:
+#     - { glob: "src/module/**", args: <args selecting its tests> }
+
+# Append-only record of fillings that failed verification.
+corrections: []

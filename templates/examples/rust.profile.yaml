@@ -1,0 +1,118 @@
+# Example profile for a made-up Rust workspace: a daemon serving a local
+# socket API, its protocol crate, and a client. Tools, versions, and dates
+# are illustrative: fill yours by probing them on your codebase (stage S0,
+# the onboard skill).
+schemaVersion: 0.1.0
+name: rust-workspace
+starting_condition: maintained
+
+runtime:
+  current: rust-stable
+
+paths:
+  product: ["crates/**"]
+  tests: ["**/tests/**", "**/tests.rs", "fuzz/**", "scripts/reliab/**"]
+  ignore: ["**/*.md"]
+
+protected_paths:
+  - "reliability-profile.yaml"
+  - "**/snapshots/**"
+  - "crates/service/tests/fixtures/stores/**"
+  - "proptest-regressions/**"
+  - "mutants.toml"
+
+# insta accepts snapshots from its CLI and from INSTA_UPDATE without naming
+# the snapshot files.
+protected_commands:
+  - '\bcargo\s+insta\s+(accept|review)\b'
+  - 'INSTA_UPDATE\s*=\s*[''"]?(always|auto|unseen)'
+  - 'INSTA_FORCE_PASS'
+
+# Turning acceptance on from inside a test.
+protected_edits:
+  - 'INSTA_(UPDATE|FORCE_PASS)'
+
+freshness_exclude: ["**/*.md"]
+
+roles:
+  T1: { tool: cargo test via cargo-nextest, version: 0.9.110, verified: 2026-10-18 }
+  T2: { tool: proptest, version: 1.9.0, verified: 2026-10-18 }
+  T3: { tool: insta, version: 1.49.0, verified: 2026-10-18, notes: "request/response transcripts over the IPC socket; INSTA_PENDING_DIR needs insta 1.49" }
+  T4: { tool: cargo-mutants, version: 27.1.0, verified: 2026-10-18 }
+  T5: { tool: in-process service daemon on a temp socket, verified: 2026-10-18 }
+  T6: { tool: service-protocol client, verified: 2026-10-18 }
+  T7: { tool: proptest over arbitrary request messages, verified: 2026-10-18, notes: "no OpenAPI spec exists; the protocol crate's types are the spec" }
+  T8: { applicable: false, reason: "local IPC only; no network between the service and its store" }
+  T9: { applicable: false, reason: "no external HTTP dependencies" }
+  T10: { tool: fault-injecting SQLite connection wrapper, verified: 2026-10-18 }
+  T11: { applicable: false, reason: "no logic lives in SQLite triggers" }
+  T12: { tool: cargo-llvm-cov, version: 0.6.21, verified: 2026-10-18 }
+  T13: { applicable: false, reason: "no read path slated for rewrite" }
+  T14: { tool: clippy, verified: 2026-10-18 }
+
+commands:
+  build: cargo build --workspace --locked --all-targets
+  analyzers: cargo clippy --workspace --all-targets --locked -- -D warnings
+  unit:
+    run: cargo nextest run --locked --profile ci {impacted} -E 'not test(/^prop_/)'
+    format: junit
+    output: target/nextest/ci/junit.xml
+  properties:
+    run: PROPTEST_CASES={cases} PROPTEST_RNG_SEED={seed} cargo nextest run --locked --profile properties --workspace -E 'test(/^prop_/)'
+    format: junit
+    output: target/nextest/properties/junit.xml
+  # insta writes each mismatch as a pending file outside the snapshot
+  # directories; the adapter labels each additive-only or values-changed.
+  snapshots:
+    run: >-
+      rm -rf .reliab/out/insta; INSTA_UPDATE=new INSTA_PENDING_DIR="$PWD/.reliab/out/insta"
+      cargo nextest run --locked --profile snapshots -p service --test transcripts;
+      reliab-adapter-insta -exit $? -junit target/nextest/snapshots/junit.xml .reliab/out/insta .reliab/out/snapshots.json
+    format: findings
+    output: .reliab/out/snapshots.json
+  faults_db:
+    run: cargo nextest run --locked --profile faults -p service -E 'test(/fault/)'
+    format: junit
+    output: target/nextest/faults/junit.xml
+    # The fault tests are in service, which builds on service-protocol.
+    relevant_when: ["crates/service/**", "crates/service-protocol/**", "Cargo.toml", "Cargo.lock"]
+  # No mutation_baseline: reliab-adapter-cargo-mutants writes no per-file
+  # counts, so a baseline scope could not be scored. Hold changed code to a
+  # threshold instead once the first full run has been measured.
+  mutation_changed:
+    run: >-
+      rm -rf .reliab/out/mutants.out; git diff {base} > .reliab/out/diff.patch;
+      cargo mutants --in-diff .reliab/out/diff.patch -o .reliab/out;
+      reliab-adapter-cargo-mutants -exit $? .reliab/out/mutants.out .reliab/out/mutation.json
+    format: findings
+    output: .reliab/out/mutation.json
+  mutation_full:
+    run: >-
+      rm -rf .reliab/out/mutants.out; cargo mutants --workspace -o .reliab/out;
+      reliab-adapter-cargo-mutants -exit $? .reliab/out/mutants.out .reliab/out/mutation.json
+    format: findings
+    output: .reliab/out/mutation.json
+  coverage:
+    run: cargo llvm-cov nextest --workspace --locked --cobertura --output-path .reliab/out/coverage.xml
+    format: cobertura
+    output: .reliab/out/coverage.xml
+    changed_only: true
+
+impacted:
+  all: --workspace
+  map:
+    - { glob: "crates/service-protocol/**", args: -p service-protocol -p service -p service-client }
+    - { glob: "crates/service/**", args: -p service }
+    - { glob: "crates/service-client/**", args: -p service-client }
+
+tiers:
+  inner: { budget_seconds: 300, property_cases: 100 }
+  prepr: { budget_seconds: 900, property_cases: 1000 }
+  nightly: { budget_seconds: 0, property_cases: 10000 }
+
+corrections:
+  - tool: insta 1.43
+    claimed: "INSTA_PENDING_DIR puts pending snapshots outside the snapshot directories"
+    found: "the variable is ignored before 1.49; pending files land beside the protected snapshots"
+    decision: "pin insta 1.49"
+    date: 2026-10-18

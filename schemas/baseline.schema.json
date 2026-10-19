@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hbaldwin98/reliab/schemas/baseline.schema.json",
+  "title": "reliab mutation baseline",
+  "description": "The file the profile's mutation_baseline names: a recorded mutation score per scope that new work must not fall below, a ratchet. It is a protected path: a person writes it with reliab baseline write and commits it (R2). See knowledge/decisions/mutation-threshold.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "scopes"],
+  "properties": {
+    "schemaVersion": { "$ref": "profile.schema.json#/$defs/semver" },
+    "scopes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "score"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1, "description": "Glob of the repo-relative files the scope covers, e.g. src/Billing/**." },
+          "score": { "type": "number", "minimum": 0, "maximum": 100, "description": "The recorded score, in percent." },
+          "killed": { "type": "integer", "minimum": 0 },
+          "counted": { "type": "integer", "minimum": 0 },
+          "command": { "$ref": "profile.schema.json#/$defs/commandId", "description": "The mutation command whose report the score was recorded from." },
+          "recordedAt": { "type": "string", "format": "date-time" },
+          "treeHash": { "type": "string", "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$", "description": "The tree that report ran against." }
+        }
+      }
+    }
+  }
+}

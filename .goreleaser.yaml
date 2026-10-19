@@ -1,0 +1,59 @@
+# Releases reliab binaries for every OS the plugin launcher supports.
+# Asset names must match plugin/bin/reliab-install.
+version: 2
+project_name: reliab
+# Adapters (cmd/adapters) ship in the same archive, beside reliab, which puts
+# its own directory on PATH for profile commands.
+builds:
+  - id: reliab
+    main: ./cmd/reliab
+    binary: reliab
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X github.com/hbaldwin98/reliab/internal/version.Version=v{{ .Version }}
+  - id: adapter-cargo-mutants
+    main: ./cmd/adapters/cargo-mutants
+    binary: reliab-adapter-cargo-mutants
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ldflags: [-s -w]
+  - id: adapter-gremlins
+    main: ./cmd/adapters/gremlins
+    binary: reliab-adapter-gremlins
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ldflags: [-s -w]
+  - id: adapter-insta
+    main: ./cmd/adapters/insta
+    binary: reliab-adapter-insta
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ldflags: [-s -w]
+  - id: adapter-verify
+    main: ./cmd/adapters/verify
+    binary: reliab-adapter-verify
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ldflags: [-s -w]
+# Every archive holds reliab, the adapters, and the plugin directory, so a
+# person can load the plugin from a release with claude --plugin-dir.
+archives:
+  - formats: [tar.gz]
+    name_template: "reliab_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - src: plugin/**/*
+release:
+  github:
+    owner: hbaldwin98
+    name: reliab
+checksum:
+  name_template: checksums.txt
+changelog:
+  use: git

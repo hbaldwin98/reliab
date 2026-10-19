@@ -1,0 +1,18 @@
+---
+source: crates/service/src/test_host/tests/session.rs
+expression: t.finish()
+---
+(connected)
+<- Queues [
+  "default",
+  "bulk"
+]
+-> Hello {
+  "client": "service-test"
+}
+<- Hello {
+  "capabilities": [
+    "jobs"
+  ],
+  "version": 3
+}

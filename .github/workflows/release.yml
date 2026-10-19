@@ -1,0 +1,31 @@
+# Publishes binaries and checksums for a vX.Y.Z tag. The tag must match the
+# plugin version committed in plugin/.claude-plugin/plugin.json, so the
+# plugin launcher and the release agree.
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Check the plugin version matches the tag
+        run: |
+          plugin=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' plugin/.claude-plugin/plugin.json)
+          [ "v$plugin" = "$GITHUB_REF_NAME" ] || { echo "plugin.json is $plugin, tag is $GITHUB_REF_NAME"; exit 1; }
+      - run: go test -timeout 300s ./...
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          # The version the archives were checked with (README "Release").
+          version: v2.18.2
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

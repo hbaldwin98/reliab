@@ -1,0 +1,169 @@
+# Example profile for a made-up .NET billing service: a .NET 8 library and
+# web API, and a .NET Framework 4.7.2 library still in use, each with an
+# NUnit test project. Tools, versions, and dates are illustrative: fill
+# yours by probing them on your codebase (stage S0, the onboard skill).
+schemaVersion: 0.1.0
+name: billing-service
+starting_condition: legacy
+
+runtime:
+  current: net472
+  target: net8.0
+  shared_lib: netstandard2.0
+
+paths:
+  product: ["src/**", "legacy/**"]
+  tests: ["tests/**", "scripts/reliab/**"]
+  ignore: ["**/*.md", "docs/**"]
+
+# Verify's accepted snapshots, the saved FsCheck regressions, Stryker's
+# config (its ignore lists are mutant suppressions), and the hand-maintained
+# OpenAPI spec are oracles, and so is this profile once committed.
+protected_paths:
+  - "reliability-profile.yaml"
+  - "**/*.verified.*"
+  - "tests/**/Regressions/**"
+  - "stryker-config.json"
+  - "src/Billing.Api/openapi.yaml"
+  - "reliab/mutation-baseline.json"
+
+# The mutation baseline: scores per area that changed code must not fall
+# below (baseline first, then hold the line). A person records it from a
+# full run, reliab verify --only mutation_full --scope <area> then
+# reliab baseline write --scope '<area>/**', and commits it; it is protected.
+mutation_baseline: reliab/mutation-baseline.json
+
+# Accepting Verify snapshots without naming a .verified. path: the Verify
+# CLI tool, and renaming a .received. file.
+protected_commands:
+  - '\bdotnet\s+verify\s+(accept|review)\b'
+  - '\.received\.[^\s]*.*\bverified\b'
+
+# Turning auto-accept on from inside test code (VerifierSettings.AutoVerify()
+# or settings.AutoVerify()).
+protected_edits:
+  - '\bAutoVerify\b'
+
+freshness_exclude: ["**/*.md", "docs/**"]
+
+base: origin/main
+
+roles:
+  T1: { tool: NUnit with TRX via dotnet test, version: 4.6.1, verified: 2026-10-18, notes: "net8.0 and net472 test projects in one solution run" }
+  T2: { tool: FsCheck core, version: 3.5.0, verified: 2026-10-18, notes: "properties are NUnit [Test] methods calling Prop.ForAll(...).Check(Props.Config), a test helper that reads BILLING_PROP_CASES and BILLING_PROP_SEED into MaxTest and Replay; works on net472 too" }
+  T3: { tool: Verify.NUnit, version: 32.0.1, verified: 2026-10-18, notes: "Verify.NUnit's major follows NUnit's; pin both together" }
+  T4: { tool: Stryker.NET, version: 4.16.0, verified: 2026-10-18, notes: "solution mode, one report for every project; net472 projects need a full MSBuild" }
+  T5: { tool: WebApplicationFactory over Billing.Api, verified: 2026-10-18 }
+  T6: { tool: Billing.Client request types, verified: 2026-10-18 }
+  T7: { tool: Schemathesis, version: 4.32.0, verified: 2026-10-18, notes: "against the built API on a local port; JUnit report; PYTHONUTF8=1 on Windows, where a redirected stdout is cp1252" }
+  T8: { applicable: false, reason: "the store is reached through one connection seam; T10 faults it there" }
+  T9: { applicable: false, reason: "the service calls no external HTTP services" }
+  T10: { tool: fault-injecting DbConnection decorator, verified: 2026-10-18 }
+  T11: { applicable: false, reason: "no logic lives in the database; it holds tables and indexes only" }
+  T12: { tool: AltCover, version: 9.0.145, verified: 2026-10-18, notes: "scripts/reliab/coverage.sh rebuilds, then instruments a copy of the test binaries without Stryker's *.stryker-unchanged backups; writes Cobertura" }
+  T13: { applicable: false, reason: "no read path is being rewritten yet; revisit when the net472 library moves" }
+  T14: { tool: .NET analyzers with warnings as errors, verified: 2026-10-18 }
+
+# dotnet test on the solution writes one TRX per test project (a fixed
+# LogFileName would overwrite them; see corrections), so each command sets
+# LogFilePrefix and reads every file through an output glob.
+commands:
+  build: dotnet build Billing.sln -v q -nologo
+  analyzers: dotnet build Billing.sln -v q -nologo --no-incremental -warnaserror
+  unit:
+    run: >-
+      dotnet test Billing.sln --no-build
+      --filter "TestCategory!=Property&TestCategory!=Snapshot&TestCategory!=StoreFault&({impacted})"
+      --logger "trx;LogFilePrefix=unit" --results-directory .reliab/out/unit
+    format: trx
+    output: .reliab/out/unit/*.trx
+  properties:
+    run: >-
+      BILLING_PROP_CASES={cases} BILLING_PROP_SEED={seed}
+      dotnet test Billing.sln --no-build --filter "TestCategory=Property"
+      --logger "trx;LogFilePrefix=properties" --results-directory .reliab/out/properties
+    format: trx
+    output: .reliab/out/properties/*.trx
+  # DiffEngine_Disabled keeps a diff tool from opening; a mismatch leaves a
+  # .received. file beside the protected .verified. one, which
+  # reliab-adapter-verify labels additive-only or values-changed and joins
+  # to the failing test.
+  snapshots:
+    run: >-
+      DiffEngine_Disabled=true dotnet test Billing.sln --no-build --filter "TestCategory=Snapshot"
+      --logger "trx;LogFilePrefix=snapshots" --results-directory .reliab/out/snapshots;
+      reliab-adapter-verify -exit $? -trx '.reliab/out/snapshots/*.trx' -root . .reliab/out/snapshots.json
+    format: findings
+    output: .reliab/out/snapshots.json
+  faults_db:
+    run: >-
+      dotnet test Billing.sln --no-build --filter "TestCategory=StoreFault"
+      --logger "trx;LogFilePrefix=faults-db" --results-directory .reliab/out/faults-db
+    format: trx
+    output: .reliab/out/faults-db/*.trx
+    # Product code, the projects, or the fault tests themselves.
+    relevant_when: ["src/**", "legacy/**", "**/*.csproj", "Billing.sln", "tests/**/*Fault*"]
+  # Starts the built API on a local port and fuzzes it from its spec.
+  api_fuzz:
+    run: sh scripts/reliab/api-fuzz.sh .reliab/out/api-fuzz.xml {seed}
+    format: junit
+    output: .reliab/out/api-fuzz.xml
+    relevant_when: ["src/**", "legacy/**", "**/*.csproj", "Billing.sln", "scripts/reliab/api-fuzz.sh"]
+  # --since tests the mutants a change since the base reaches (a bare --since
+  # means master; stryker-config.json's since.ignore-changes-in keeps
+  # non-code changes from re-testing everything); changed_only then keeps
+  # findings and counts to changed lines. MSBuildSDKsPath lets the full
+  # MSBuild that net472 projects need find the SDK.
+  mutation_changed:
+    run: >-
+      MSBuildSDKsPath="$DOTNET_ROOT/sdk/8.0.426/Sdks" MSBuildEnableWorkloadResolver=false
+      dotnet stryker --since:{base} -O .reliab/out/stryker
+    format: mutation-report
+    output: .reliab/out/stryker/reports/mutation-report.json
+    changed_only: true
+  mutation_full:
+    run: >-
+      MSBuildSDKsPath="$DOTNET_ROOT/sdk/8.0.426/Sdks" MSBuildEnableWorkloadResolver=false
+      dotnet stryker -O .reliab/out/stryker
+    format: mutation-report
+    output: .reliab/out/stryker/reports/mutation-report.json
+  coverage:
+    run: sh scripts/reliab/coverage.sh .reliab/out/coverage.cobertura.xml
+    format: cobertura
+    output: .reliab/out/coverage.cobertura.xml
+    changed_only: true
+
+# {impacted} becomes one OR-expression inside the unit filter's parentheses.
+impacted:
+  all: "FullyQualifiedName~Billing"
+  separator: "|"
+  map:
+    - { glob: "src/Billing/**", args: "FullyQualifiedName~Billing.Tests" }
+    - { glob: "src/Billing.Api/**", args: "FullyQualifiedName~Billing.Tests.Api" }
+    - { glob: "legacy/**", args: "FullyQualifiedName~Billing.Legacy.Tests" }
+
+tiers:
+  inner: { budget_seconds: 300, property_cases: 100 }
+  prepr: { budget_seconds: 900, property_cases: 1000 }
+
+corrections:
+  - tool: dotnet test with --logger "trx;LogFileName=unit.trx" on the solution
+    claimed: "one TRX file with every project's results"
+    found: "each test project runs separately and overwrites unit.trx; only the last project's results remain"
+    decision: "LogFilePrefix per command, and read every TRX through an output glob"
+    date: 2026-10-18
+  - tool: Stryker.NET 4.16.0 on the net472 projects
+    claimed: "runs on .NET Framework projects"
+    found: "it builds them with a full MSBuild.exe, which could not resolve the SDK without the .NET workload: Microsoft.NET.Sdk not found"
+    decision: "set MSBuildSDKsPath to the installed SDK and MSBuildEnableWorkloadResolver=false"
+    date: 2026-10-18
+  - tool: Stryker.NET 4.16.0 --since
+    claimed: "--since tests only what the branch changed"
+    found: "a bare --since compares with master, and any change to a non-code file (yaml, md, props) makes it test every mutant"
+    decision: "--since:{base}, and since.ignore-changes-in for non-code files in stryker-config.json"
+    date: 2026-10-18
+  - tool: AltCover 9.0.145 after Stryker.NET in the same tier
+    claimed: "coverage runs over the binaries the build command produced"
+    found: "Stryker restores a Billing.dll from its .stryker-unchanged backup, so coverage measured the code from before the change"
+    decision: "coverage.sh rebuilds before instrumenting and skips *.stryker-unchanged files"
+    date: 2026-10-18

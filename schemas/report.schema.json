@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hbaldwin98/reliab/schemas/report.schema.json",
+  "title": "reliab report",
+  "description": "What one verify run did and found. Written only by reliab. See knowledge/concepts/report.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "tool", "run", "findings"],
+  "properties": {
+    "schemaVersion": { "$ref": "profile.schema.json#/$defs/semver" },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "const": "reliab" },
+        "version": { "type": "string", "minLength": 1 }
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tier", "profile", "startedAt", "elapsedSec", "budgetSec", "complete", "treeHash", "commands", "skipped"],
+      "properties": {
+        "tier": { "enum": ["inner", "prepr", "nightly", "on-demand"], "description": "on-demand: the commands were chosen with verify --only." },
+        "only": { "type": "array", "minItems": 1, "items": { "$ref": "profile.schema.json#/$defs/commandId" }, "description": "Commands an on-demand run was asked for." },
+        "scope": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Repo-relative paths an on-demand run was narrowed to." },
+        "profile": { "type": "string", "minLength": 1 },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "elapsedSec": { "type": "number", "minimum": 0 },
+        "budgetSec": { "type": "integer", "minimum": 0, "description": "0 means no budget." },
+        "complete": { "type": "boolean", "description": "False when the budget ran out before every command ran." },
+        "treeHash": { "$ref": "#/$defs/treeHash", "description": "Working-tree hash the run saw." },
+        "head": { "type": "string", "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$", "description": "The HEAD commit when the run started, absent in a repository with no commits. Ties history reports to a branch (knowledge/decisions/pr-evidence-summary.md)." },
+        "seed": { "type": "string" },
+        "base": { "type": "string", "description": "The base ref changed-code commands were measured against, or relevance was judged against, when either happened." },
+        "propertyCases": { "type": "integer", "minimum": 1 },
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "exitCode", "elapsedSec"],
+            "properties": {
+              "id": { "$ref": "profile.schema.json#/$defs/commandId" },
+              "exitCode": { "type": "integer" },
+              "elapsedSec": { "type": "number", "minimum": 0 },
+              "format": { "type": "string" },
+              "output": { "type": "string" },
+              "log": { "type": "string", "description": "Captured stdout and stderr, relative to the repo root." },
+              "mutants": { "$ref": "#/$defs/mutantCounts" },
+              "mutantFiles": { "$ref": "#/$defs/mutantFiles" },
+              "coverage": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["valid", "covered"],
+                "description": "Lines a coverage report measured and how many tests reached; with changedSince, only lines changed since that base ref.",
+                "properties": {
+                  "valid": { "type": "integer", "minimum": 0 },
+                  "covered": { "type": "integer", "minimum": 0 },
+                  "changedSince": { "type": "string", "minLength": 1 }
+                }
+              },
+              "score": { "$ref": "#/$defs/score" },
+              "relevance": { "type": "string", "description": "For a command with relevant_when: the changed file that made it relevant, or why relevance was not judged (nightly, --only, no base). See knowledge/decisions/relevance-skips.md." }
+            }
+          }
+        },
+        "skipped": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "reason"],
+            "properties": {
+              "id": { "$ref": "profile.schema.json#/$defs/commandId" },
+              "reason": { "enum": ["budget", "no-command", "not-applicable", "build-failed", "not-relevant", "role-missing"], "description": "not-relevant: the change touched no file the command's relevant_when names. role-missing: the codebase needs the command's tool role and has no tool for it yet." },
+              "detail": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+    "verdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcome", "by", "at"],
+      "description": "Written by reliab report verdict for the reviewer subagent. See knowledge/decisions/reviewer-verdict.md.",
+      "properties": {
+        "outcome": { "enum": ["pass", "fail"] },
+        "by": { "type": "string", "minLength": 1 },
+        "at": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string" },
+        "treeHash": { "$ref": "#/$defs/treeHash", "description": "The tree the reviewer re-ran; the push gate accepts the verdict only while the report and working tree still have it." },
+        "head": { "type": "string", "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$", "description": "The commit the reviewer's clean worktree was at." },
+        "rerunStartedAt": { "type": "string", "format": "date-time", "description": "When the reviewer's own pre-PR run started." }
+      }
+    }
+  },
+  "$defs": {
+    "treeHash": { "type": "string", "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$" },
+    "mutantCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["killed", "survived"],
+      "description": "Mutants a mutation command tested, after any changed-lines filter: killed (timeouts included), survived, and notCovered (no test reaches the line). Mutants that did not build are not counted. Survived and notCovered mutants are also findings.",
+      "properties": {
+        "killed": { "type": "integer", "minimum": 0 },
+        "survived": { "type": "integer", "minimum": 0 },
+        "notCovered": { "type": "integer", "minimum": 0 },
+        "changedSince": { "type": "string", "minLength": 1, "description": "Set when the counts cover only mutants on lines changed since this base ref." }
+      }
+    },
+    "mutantFiles": {
+      "type": "object",
+      "description": "Mutant counts per repo-relative file, when the tool says, so a baseline scope can be scored.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["killed", "survived"],
+        "properties": {
+          "killed": { "type": "integer", "minimum": 0 },
+          "survived": { "type": "integer", "minimum": 0 },
+          "notCovered": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "score": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["killed", "counted"],
+      "description": "A mutation command's score: killed of counted, where counted is killed, survived, and not covered, less the survivors a person confirmed equivalent. See knowledge/decisions/mutation-threshold.md.",
+      "properties": {
+        "killed": { "type": "integer", "minimum": 0 },
+        "counted": { "type": "integer", "minimum": 0 },
+        "equivalent": { "type": "integer", "minimum": 0, "description": "Survivors a person confirmed equivalent, left out of counted." },
+        "pendingEquivalent": { "type": "integer", "minimum": 0, "description": "Survivors classified equivalent and not yet confirmed; still counted." },
+        "threshold": { "type": "number", "minimum": 0, "maximum": 100, "description": "The profile's minimum score in percent." },
+        "baselines": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["scope", "baseline", "killed", "counted"],
+            "properties": {
+              "scope": { "type": "string", "minLength": 1 },
+              "baseline": { "type": "number", "minimum": 0, "maximum": 100 },
+              "killed": { "type": "integer", "minimum": 0 },
+              "counted": { "type": "integer", "minimum": 0 },
+              "unmeasured": { "type": "boolean", "description": "The tool reported no per-file counts, so the scope could not be scored." }
+            }
+          }
+        }
+      }
+    },
+    "diffLabel": {
+      "enum": ["additive-only", "values-changed"],
+      "description": "For a text snapshot or capture that no longer matches: additive-only when lines were only added, values-changed when any line was removed or changed. It helps a person review; approval stays human (R2). See knowledge/decisions/snapshot-diff-labels.md."
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "command", "status"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^F-[0-9A-Za-z-]+$" },
+        "kind": {
+          "enum": [
+            "unclassified", "new-code-defect", "harness-defect", "wrong-property",
+            "legacy-defect-or-quirk", "characterization-diff", "equivalent-mutant", "requirement-silent", "environment",
+            "below-threshold"
+          ]
+        },
+        "command": { "$ref": "profile.schema.json#/$defs/commandId" },
+        "test": { "type": "string" },
+        "location": { "type": "string", "description": "File and line, when the tool reports one." },
+        "intent": { "type": "string", "description": "Cited source of intent (R3)." },
+        "replay": { "type": "string", "description": "Path of the saved seed or input that reproduces it." },
+        "minimalInput": { "description": "Shrunk input, any JSON value." },
+        "observed": { "type": "string" },
+        "expected": { "type": "string" },
+        "message": { "type": "string", "description": "Raw failure text from the tool, truncated." },
+        "diff": { "$ref": "#/$defs/diffLabel" },
+        "status": { "enum": ["open", "fixed", "discarded", "acknowledged"] },
+        "score": { "type": "integer", "minimum": 0 },
+        "classification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reason", "at"],
+          "properties": {
+            "reason": { "type": "string", "minLength": 1 },
+            "at": { "type": "string", "format": "date-time" }
+          }
+        },
+        "acknowledged": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["by", "at"],
+          "properties": {
+            "by": { "type": "string", "minLength": 1 },
+            "at": { "type": "string", "format": "date-time" }
+          }
+        }
+      }
+    }
+  }
+}

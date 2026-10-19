@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "0.1.0",
+  "tool": { "name": "reliab", "version": "v0.1.0" },
+  "run": {
+    "tier": "inner",
+    "profile": "rust-workspace",
+    "startedAt": "2026-10-17T15:40:00-07:00",
+    "elapsedSec": 212.4,
+    "budgetSec": 300,
+    "complete": true,
+    "treeHash": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+    "seed": "1729204800",
+    "propertyCases": 100,
+    "commands": [
+      { "id": "build", "exitCode": 0, "elapsedSec": 41.0 },
+      { "id": "analyzers", "exitCode": 0, "elapsedSec": 38.2 },
+      { "id": "unit", "exitCode": 100, "elapsedSec": 133.2, "format": "junit", "output": "target/nextest/ci/junit.xml" }
+    ],
+    "skipped": [
+      { "id": "snapshots", "reason": "no-command", "detail": "the profile has no snapshots command" }
+    ]
+  },
+  "findings": [
+    {
+      "id": "F-20261017-01",
+      "kind": "new-code-defect",
+      "command": "unit",
+      "test": "store::tests::reconcile_never_drops_sessions",
+      "intent": "DESIGN.md store section",
+      "replay": "corpus/store/F-20261017-01.json",
+      "minimalInput": { "sessions": [] },
+      "observed": "panic: index out of bounds",
+      "expected": "empty reconcile is a no-op",
+      "status": "open",
+      "classification": { "reason": "fails on the new reconcile path only", "at": "2026-10-17T15:44:00-07:00" }
+    }
+  ]
+}

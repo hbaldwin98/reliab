@@ -1,0 +1,22 @@
+{
+  "enabledPlugins": {
+    "reliab@reliab": true
+  },
+  "extraKnownMarketplaces": {
+    "reliab": {
+      "source": {
+        "repo": "hbaldwin98/reliab",
+        "source": "github"
+      }
+    }
+  },
+  "permissions": {
+    "allow": [
+      "Bash(reliab *)"
+    ],
+    "deny": [
+      "Edit(/.reliab/**)",
+      "Edit(**/testdata/golden/**)"
+    ]
+  }
+}

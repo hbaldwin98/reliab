@@ -1,0 +1,73 @@
+# reliab's own stack profile: reliab is verified with reliab.
+# Fillings are claims until stage S0 verifies them on this codebase.
+schemaVersion: 0.1.0
+name: go-cli
+starting_condition: greenfield
+
+runtime:
+  current: go1.27
+
+paths:
+  product: ["cmd/**", "internal/**", "schemas/**", "plugin/**"]
+  tests: ["**/*_test.go", "**/testdata/**"]
+  ignore: ["knowledge/**", "README.md", ".gitattributes", ".gitignore"]
+
+protected_paths: ["**/testdata/golden/**", "reliability-profile.yaml"]
+freshness_exclude: ["knowledge/**", "README.md"]
+
+roles:
+  T1: { tool: go test via gotestsum, version: v1.13.0, verified: 2026-10-17 }
+  T2: { tool: rapid }
+  T3: { tool: golden files under testdata/golden }
+  T4: { tool: gremlins, version: v0.6.0, verified: 2026-10-18, notes: "runs per package (scripts/mutation.sh): from the module root on Windows it sees no coverage (go-gremlins/gremlins#222). Exits 0 with survivors, so cmd/adapters/gremlins converts its reports" }
+  T5: { tool: cli.Execute called in-process }
+  T6: { tool: cli.Execute argument vectors }
+  T7: { applicable: false, reason: reliab has no network API; its interface is CLI arguments and hook stdin }
+  T8: { applicable: false, reason: no network dependencies between reliab and a store }
+  T9: { applicable: false, reason: the Go binary makes no HTTP calls; downloads happen in the launcher scripts }
+  T10: { applicable: false, reason: no data store }
+  T11: { applicable: false, reason: no data store }
+  T12: { tool: go test -coverprofile, verified: 2026-10-17 }
+  T13: { applicable: false, reason: no old implementation to shadow }
+  T14: { tool: golangci-lint, version: v2.15.0, verified: 2026-10-17, notes: must be built with Go >= the go.mod version }
+
+commands:
+  build: go build ./...
+  analyzers: golangci-lint run
+  unit:
+    run: gotestsum --junitfile .reliab/out/unit.xml -- {impacted}
+    format: junit
+    output: .reliab/out/unit.xml
+  # gremlins per changed package, then cmd/adapters/gremlins (run from source,
+  # so it matches the code under test) keeps the mutants on changed lines.
+  # {base} makes verify resolve the one base every run measures from.
+  mutation_changed:
+    run: scripts/mutation.sh changed {base}
+    format: findings
+    output: .reliab/out/mutation.json
+    # Changed code must score 80% (knowledge/decisions/mutation-threshold.md).
+    threshold: 80
+    # It mutates changed Go files only, so a change to nothing it reads
+    # cannot affect it (knowledge/decisions/relevance-skips.md).
+    relevant_when: ["**/*.go", "go.mod", "go.sum", "scripts/mutation.sh", "cmd/adapters/gremlins/**"]
+  # Every package, or those under verify --scope; all mutants.
+  mutation_full:
+    run: scripts/mutation.sh full
+    format: findings
+    output: .reliab/out/mutation.json
+  coverage: go test -coverprofile=.reliab/out/cover.out ./...
+
+impacted:
+  all: ./...
+  map:
+    - { glob: "internal/okf/**", args: ./internal/okf/... }
+    - { glob: "internal/profile/**", args: ./internal/profile/... ./schemas/... }
+    - { glob: "schemas/**", args: ./schemas/... ./internal/profile/... }
+    - { glob: "internal/cli/**", args: ./internal/cli/... }
+
+corrections:
+  - tool: golangci-lint v2.15.0
+    claimed: "go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest works for any module"
+    found: "go install built it with go1.26.9 (its own go.mod minimum), and it refuses modules targeting go1.27: the Go language version used to build golangci-lint is lower than the targeted Go version"
+    decision: "install with GOTOOLCHAIN=go1.27.2 go install ...; CI installs from the go.mod toolchain"
+    date: 2026-10-17

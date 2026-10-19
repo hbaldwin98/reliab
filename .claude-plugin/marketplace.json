@@ -1,0 +1,11 @@
+{
+  "name": "reliab",
+  "owner": { "name": "Hunter Baldwin" },
+  "plugins": [
+    {
+      "name": "reliab",
+      "source": "./plugin",
+      "description": "Run the evidence stack inside the edit loop and enforce the agent testing contract."
+    }
+  ]
+}

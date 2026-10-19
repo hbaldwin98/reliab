@@ -1,0 +1,9 @@
+version: "2"
+linters:
+  settings:
+    errcheck:
+      # Progress and help output to a terminal writer: nothing to do on error.
+      exclude-functions:
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - fmt.Fprint

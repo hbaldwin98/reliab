@@ -1,0 +1,110 @@
+# Example profile for a made-up Go service: an orders HTTP API backed by
+# PostgreSQL, with a client package other services import. Its shape follows
+# reliab's own profile. Tools, versions, and dates are illustrative: fill
+# yours by probing them on your codebase (stage S0, the onboard skill).
+schemaVersion: 0.1.0
+name: orders-service
+starting_condition: maintained
+
+runtime:
+  current: go1.27
+
+paths:
+  product: ["cmd/**", "internal/**", "client/**", "api/**"]
+  tests: ["**/*_test.go", "**/testdata/**", "scripts/reliab/**"]
+  ignore: ["docs/**", "**/*.md"]
+
+# Golden files and the saved regression inputs are oracles; the OpenAPI
+# spec is hand-maintained. The profile guards itself once committed.
+protected_paths: ["reliability-profile.yaml", "**/testdata/golden/**", "**/testdata/rapid/**", "api/openapi.yaml", "reliab/mutation-baseline.json"]
+
+# The mutation baseline: scores per area that changed code must not fall
+# below (baseline first, then hold the line). A person records it from a
+# full run, reliab verify --only mutation_full --scope <area> then
+# reliab baseline write --scope '<area>/**', and commits it; it is protected.
+mutation_baseline: reliab/mutation-baseline.json
+
+# The golden-file tests rewrite their files when run with -update.
+protected_commands: ['\bgo\s+test\b.*\s-update\b']
+
+freshness_exclude: ["docs/**", "**/*.md"]
+
+roles:
+  T1: { tool: go test via gotestsum, version: v1.13.0, verified: 2026-10-18 }
+  T2: { tool: rapid, version: v1.2.0, verified: 2026-10-18, notes: "seed from -rapid.seed; failing cases saved under testdata/rapid" }
+  T3: { tool: golden files under testdata/golden, verified: 2026-10-18 }
+  T4: { tool: gremlins, version: v0.6.0, verified: 2026-10-18, notes: "exits 0 with survivors, so reliab-adapter-gremlins converts its reports" }
+  T5: { tool: httptest.Server over the real router, verified: 2026-10-18 }
+  T6: { tool: the client package, verified: 2026-10-18 }
+  T7: { tool: Schemathesis, version: 4.32.0, verified: 2026-10-18 }
+  T8: { applicable: false, reason: "the service and PostgreSQL share a host in every environment; no network between them to fault" }
+  T9: { tool: httptest stubs of the payment provider, verified: 2026-10-18 }
+  T10: { tool: fault-injecting database/sql driver wrapper, verified: 2026-10-18 }
+  T11: { applicable: false, reason: "no triggers or procedures; all logic is in Go" }
+  T12: { tool: go test -coverprofile with gocover-cobertura, version: v1.3.0, verified: 2026-10-18 }
+  T13: { applicable: false, reason: "no read path slated for rewrite" }
+  T14: { tool: golangci-lint, version: v2.15.0, verified: 2026-10-18 }
+
+commands:
+  build: go build ./...
+  analyzers: golangci-lint run
+  unit:
+    run: gotestsum --junitfile .reliab/out/unit.xml -- {impacted}
+    format: junit
+    output: .reliab/out/unit.xml
+  properties:
+    run: gotestsum --junitfile .reliab/out/properties.xml -- -run Property ./internal/... -rapid.checks={cases} -rapid.seed={seed}
+    format: junit
+    output: .reliab/out/properties.xml
+  faults_db:
+    run: gotestsum --junitfile .reliab/out/faults-db.xml -- -tags faults -run Fault ./internal/store/...
+    format: junit
+    output: .reliab/out/faults-db.xml
+    # It tests ./internal/store only, so only a change there can affect it.
+    relevant_when: ["internal/store/**", "go.mod", "go.sum"]
+  faults_http:
+    run: gotestsum --junitfile .reliab/out/faults-http.xml -- -run Fault ./internal/payments/...
+    format: junit
+    output: .reliab/out/faults-http.xml
+    relevant_when: ["internal/payments/**", "go.mod", "go.sum"]
+  # Starts the built service on a local port and fuzzes it from its spec.
+  api_fuzz:
+    run: sh scripts/reliab/api-fuzz.sh .reliab/out/api-fuzz.xml {seed}
+    format: junit
+    output: .reliab/out/api-fuzz.xml
+    # The whole service answers the fuzz; the client and docs do not.
+    relevant_when: ["cmd/**", "internal/**", "api/**", "go.mod", "go.sum"]
+  # gremlins per changed package, then reliab-adapter-gremlins -base keeps
+  # the mutants on lines changed since the base.
+  mutation_changed:
+    run: sh scripts/reliab/mutation.sh changed {base}
+    format: findings
+    output: .reliab/out/mutation.json
+  mutation_full:
+    run: sh scripts/reliab/mutation.sh full
+    format: findings
+    output: .reliab/out/mutation.json
+  coverage:
+    run: go test -coverprofile=.reliab/out/cover.out ./... && gocover-cobertura < .reliab/out/cover.out > .reliab/out/coverage.xml
+    format: cobertura
+    output: .reliab/out/coverage.xml
+    changed_only: true
+
+impacted:
+  all: ./...
+  map:
+    - { glob: "internal/orders/**", args: ./internal/orders/... ./cmd/... }
+    - { glob: "internal/payments/**", args: ./internal/payments/... }
+    - { glob: "internal/store/**", args: ./internal/store/... ./internal/orders/... }
+    - { glob: "client/**", args: ./client/... }
+
+tiers:
+  inner: { budget_seconds: 300, property_cases: 100 }
+  prepr: { budget_seconds: 900, property_cases: 1000 }
+
+corrections:
+  - tool: golangci-lint v2.15.0
+    claimed: "go install .../golangci-lint@latest works for any module"
+    found: "built with an older Go than go.mod targets, it refuses the module: the Go language version used to build golangci-lint is lower than the targeted Go version"
+    decision: "install with GOTOOLCHAIN set to the go.mod toolchain"
+    date: 2026-10-18

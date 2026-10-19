@@ -1,0 +1,7 @@
+# Build output
+/dist/
+/reliab
+/reliab.exe
+
+# reliab's own reports (only the binary writes these)
+/.reliab/

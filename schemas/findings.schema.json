@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hbaldwin98/reliab/schemas/findings.schema.json",
+  "title": "reliab findings",
+  "description": "What an external adapter writes for a command with format: findings. The file is the whole result: reliab does not consult the command's exit code once it parses. See knowledge/decisions/external-adapters.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "findings"],
+  "properties": {
+    "schemaVersion": { "$ref": "profile.schema.json#/$defs/semver" },
+    "mutants": { "$ref": "report.schema.json#/$defs/mutantCounts", "description": "For a mutation tool: how many mutants it tested, so a report can say tested, killed, and survived, not only list survivors." },
+    "mutantFiles": { "$ref": "report.schema.json#/$defs/mutantFiles", "description": "The mutant counts per repo-relative file, so a baseline scope can be scored." },
+    "findings": {
+      "type": "array",
+      "description": "Empty when the tool found nothing.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["test"],
+        "properties": {
+          "test": {
+            "type": "string",
+            "minLength": 1,
+            "description": "What failed, and the finding's identity: the same failure must get the same test across runs so classifications carry forward. Unique within the file."
+          },
+          "location": { "type": "string", "description": "File and line, when known." },
+          "message": { "type": "string", "description": "Failure text; reliab truncates it." },
+          "replay": { "type": "string", "description": "Path of the saved seed or input that reproduces it." },
+          "observed": { "type": "string" },
+          "expected": { "type": "string" },
+          "diff": { "$ref": "report.schema.json#/$defs/diffLabel" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,20 @@
+---
+source: crates/service/src/test_host/tests/jobs.rs
+assertion_line: 14
+expression: t.finish()
+---
+(connected and greeted, as in connecting_and_greeting)
+-> SubmitJob {
+  "queue": "default"
+}
+<- JobStatus {
+  "id": 7,
+  "state": "running"
+}
+-> CancelJob {
+  "id": 7
+}
+<- JobStatus {
+  "id": 7,
+  "state": "cancelled"
+}

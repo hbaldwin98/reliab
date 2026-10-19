@@ -1,0 +1,214 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hbaldwin98/reliab/schemas/profile.schema.json",
+  "title": "reliab stack profile",
+  "description": "reliability-profile.yaml: binds the reliab method to one codebase. See knowledge/concepts/stack-profile.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "name", "starting_condition", "paths", "roles", "commands"],
+  "properties": {
+    "schemaVersion": { "$ref": "#/$defs/semver" },
+    "name": { "type": "string", "minLength": 1, "description": "Profile name, e.g. rust-workspace." },
+    "starting_condition": { "enum": ["greenfield", "maintained", "legacy"] },
+    "verified_on": { "$ref": "#/$defs/date", "description": "Date stage S0 last passed on this codebase." },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["current"],
+      "properties": {
+        "current": { "type": "string", "minLength": 1 },
+        "target": { "type": "string", "minLength": 1, "description": "Runtime a planned move goes to, or none." },
+        "shared_lib": { "type": "string", "minLength": 1, "description": "Lowest runtime both current and target support." }
+      }
+    },
+    "paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product", "tests"],
+      "description": "Path classes. A file matching none of them counts as product.",
+      "properties": {
+        "product": { "$ref": "#/$defs/globs" },
+        "tests": { "$ref": "#/$defs/globs" },
+        "ignore": { "$ref": "#/$defs/globs" }
+      }
+    },
+    "protected_paths": { "$ref": "#/$defs/globs", "description": "Oracles that change only with human approval (R2)." },
+    "protected_commands": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Regular expressions (RE2) matching shell commands that approve or rewrite a protected oracle without naming its path, such as a snapshot tool's accept command. Agents are denied them (R2)."
+    },
+    "protected_edits": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Regular expressions (RE2) matching text an agent may not add to any file, such as a snapshot tool's auto-accept switch in test code. Edits that add a match are denied (R2). A hook cannot see behavior a test opts into at runtime by other means; gate protected stays the backstop."
+    },
+    "base": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Ref a branch is measured from: changed_only commands, {base}, report summary. Default: the first of origin/HEAD, origin/main, main, master with a merge base."
+    },
+    "freshness_exclude": { "$ref": "#/$defs/globs", "description": "Paths whose changes do not make a report stale." },
+    "mutation_baseline": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Repo-relative path of the mutation baseline file (schemas/baseline.schema.json): a recorded score per scope that mutation runs must not fall below. It must match protected_paths: a person writes it with reliab baseline write and commits it (R2)."
+    },
+    "roles": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One entry per tool role T1-T14: a filling, or applicable: false with a reason.",
+      "required": ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "T9", "T10", "T11", "T12", "T13", "T14"],
+      "patternProperties": { "^T([1-9]|1[0-4])$": { "$ref": "#/$defs/role" } }
+    },
+    "commands": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What verify runs. The only place a tool is named. Placeholders: {impacted}, {cases}, {seed}, {scope}, {base}, and {capture} (characterize only: the directory to write transcripts into).",
+      "propertyNames": { "$ref": "#/$defs/commandId" },
+      "patternProperties": { "": { "$ref": "#/$defs/command" } }
+    },
+    "impacted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["all"],
+      "description": "What {impacted} expands to. Changed files matching map globs contribute their args; any unmatched changed file means all.",
+      "properties": {
+        "all": { "type": "string", "description": "Arguments that select every test, e.g. ./... or --workspace." },
+        "separator": { "type": "string", "minLength": 1, "description": "Joins the args of several matched map entries. Default a space; a test filter may need e.g. ' | '." },
+        "map": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["glob", "args"],
+            "properties": {
+              "glob": { "type": "string", "minLength": 1 },
+              "args": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "tiers": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "inner": { "$ref": "#/$defs/tier" },
+        "prepr": { "$ref": "#/$defs/tier" },
+        "nightly": { "$ref": "#/$defs/tier" }
+      }
+    },
+    "host_adapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file"],
+      "properties": {
+        "class": { "type": "string" },
+        "file": { "type": "string", "minLength": 1 }
+      }
+    },
+    "require_reviewer_verdict": { "type": "boolean", "default": false },
+    "corrections": {
+      "type": "array",
+      "description": "Append-only: role fillings that failed the verification protocol.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["tool", "claimed", "found", "decision", "date"],
+        "properties": {
+          "tool": { "type": "string", "minLength": 1 },
+          "claimed": { "type": "string" },
+          "found": { "type": "string" },
+          "decision": { "type": "string" },
+          "source": { "type": "string" },
+          "date": { "$ref": "#/$defs/date" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "semver": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$" },
+    "date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "globs": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+    "role": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tool"],
+          "properties": {
+            "tool": { "type": "string", "minLength": 1 },
+            "version": { "type": "string" },
+            "verified": { "$ref": "#/$defs/date" },
+            "notes": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["applicable", "reason"],
+          "properties": {
+            "applicable": { "const": false },
+            "reason": { "type": "string", "minLength": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["missing", "reason"],
+          "properties": {
+            "missing": { "const": true },
+            "reason": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "commandId": {
+      "enum": [
+        "build", "analyzers", "corpus", "unit", "snapshots", "properties", "spec_checks",
+        "model_tests", "api_fuzz", "mutation_changed", "mutation_full", "faults_db",
+        "faults_http", "store_tests", "replay_sampled", "replay_full", "coverage",
+        "characterize"
+      ]
+    },
+    "command": {
+      "oneOf": [
+        { "type": "string", "minLength": 1, "description": "Shorthand: run this; judge by exit code only." },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["run"],
+          "properties": {
+            "run": { "type": "string", "minLength": 1 },
+            "format": {
+              "enum": ["none", "junit", "trx", "sarif", "mutation-report", "cobertura", "findings"],
+              "default": "none",
+              "description": "Format of the output file, which selects the reader. findings is reliab's own format, written by an external adapter for any other tool."
+            },
+            "output": { "type": "string", "minLength": 1, "description": "Path or glob of the output file(s), relative to the repo root. Every match is read; matches are removed before the command runs." },
+            "changed_only": { "type": "boolean", "default": false, "description": "For a mutation-report or cobertura output: keep only the lines changed since the base (findings and counts)." },
+            "relevant_when": { "$ref": "#/$defs/globs", "minItems": 1, "description": "Globs of the files that make this command relevant. In the inner and prepr tiers it is skipped, with the reason, when no file changed since the base matches; never in nightly, under --only, or when the base cannot be resolved. See knowledge/decisions/relevance-skips.md." },
+            "threshold": { "type": "number", "minimum": 0, "maximum": 100, "description": "mutation_* commands only: the minimum mutation score, in percent, of what the command measured (changed code, for a changed-code command). Below it verify adds a below-threshold finding and reliab gate mutation fails." }
+          },
+          "if": { "properties": { "format": { "not": { "const": "none" } } }, "required": ["format"] },
+          "then": { "required": ["output"] }
+        }
+      ]
+    },
+    "tier": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "budget_seconds": { "type": "integer", "minimum": 0, "description": "0 means no budget." },
+        "property_cases": { "type": "integer", "minimum": 1 },
+        "run": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/commandId" },
+          "uniqueItems": true,
+          "description": "Overrides the built-in command list for this tier."
+        }
+      }
+    }
+  }
+}

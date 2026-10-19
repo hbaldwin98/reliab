@@ -1,0 +1,25 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/reliab\" hook pre-edit" }]
+      },
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/reliab\" hook pre-bash" }]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/reliab\" hook stop" }]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/reliab\" hook session-start", "timeout": 120 }]
+      }
+    ]
+  }
+}

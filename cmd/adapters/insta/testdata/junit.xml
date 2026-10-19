@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="nextest-run" tests="3" failures="3" errors="0">
+  <testsuite name="service" tests="3" failures="3" errors="0">
+    <testcase name="test_host::tests::session::connecting_and_greeting" classname="service">
+      <failure type="test failure">thread 'test_host::tests::session::connecting_and_greeting' panicked at crates/service/src/test_host/tests/session.rs:11:5:
+snapshot assertion for 'connecting_and_greeting' failed in line 11</failure>
+    </testcase>
+    <testcase name="test_host::tests::jobs::a_job_from_start_to_end" classname="service">
+      <failure type="test failure">thread 'test_host::tests::jobs::a_job_from_start_to_end' panicked at crates/service/src/test_host/tests/jobs.rs:14:5:
+snapshot assertion for 'a_job_from_start_to_end' failed in line 14</failure>
+    </testcase>
+    <testcase name="test_host::tests::batch::a_batch_worked_through" classname="service">
+      <failure type="test failure">thread 'test_host::tests::batch::a_batch_worked_through' panicked at crates/service/src/test_host/mod.rs:88:9:
+the host should take a request: Os { code: 232, kind: BrokenPipe }</failure>
+    </testcase>
+  </testsuite>
+</testsuites>
