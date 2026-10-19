@@ -7,12 +7,18 @@ argument-hint: <tool> [command id]
 # Write an adapter
 
 An adapter is a small program a profile command runs after the tool. It
-reads what the tool wrote and writes reliab's findings file
-(`schemas/findings.schema.json`, `format: findings`). Once that file parses,
-it is the whole result: reliab no longer looks at the command's exit code.
-So an adapter that writes an empty file when the tool never ran turns a
-broken command into a pass. The contract below exists to prevent that, and
-to keep each finding's id stable so classifications carry across runs.
+reads what the tool wrote and writes reliab's findings file (`format:
+findings`). Once that file parses, it is the whole result: reliab no longer
+looks at the command's exit code. So an adapter that writes an empty file
+when the tool never ran turns a broken command into a pass, and one whose
+ids move with line numbers loses every classification. The contract that prevents both is one page:
+
+```sh
+reliab docs adapters
+```
+
+Read it before step 3; it is for the installed version, and its example is
+a complete adapter with its tests.
 
 ## 1. Check that one is needed
 
@@ -50,11 +56,9 @@ for each exit code.
 ## 3. Write it to the contract
 
 Write it in the repository's own language, or as a short script, at a path
-the repository keeps tooling in, named `reliab-adapter-<tool>`. Go adapters
-can import `github.com/hbaldwin98/reliab/pkg/findings`, which writes the
-file and mutant keys; reliab's own four are examples
-(<https://github.com/hbaldwin98/reliab/tree/main/cmd/adapters>).
-Follow every rule under [Contract](#contract).
+the repository keeps tooling in, named `reliab-adapter-<tool>`. Follow
+every rule in `reliab docs adapters`, and use its helpers rather than
+re-deriving what they compute (changed lines, snapshot labels).
 
 ## 4. Test it on the fixtures
 
@@ -83,25 +87,22 @@ Done when:
 
 ## 5. Wire it and probe it
 
-The profile command runs the tool, then the adapter, and names the
-adapter's file as its `output`:
+Write the profile command the way the contract's first example does: the
+tool, then the adapter with the tool's exit code, `format: findings`, and
+the adapter's file as `output`. Add the adapter to the role's `notes`.
 
-```yaml
-mutation_changed:
-  run: <tool> ... ; reliab-adapter-<tool> -exit $? <tool output> .reliab/out/mutation.json
-  format: findings
-  output: .reliab/out/mutation.json
-```
+Probe it in a scratch worktree with the command added there:
+`reliab verify --only <id> --tier prepr` once clean and once with a planted
+failure, then `reliab report route`. The planted failure must become a
+finding with the right test and location; the clean run, none.
 
-`reliability-profile.yaml` is protected once committed: if it is, give the
-person this block, and the role notes below, to add themselves, and stop
-there. Otherwise add it.
+Then wire it in the repository. `reliability-profile.yaml` is protected
+once committed: if it is, hand the person the command block and the role
+notes to add and approve, and stop there. Otherwise add them, and run
+`reliab verify --only <id>` on the clean repository.
 
-Probe through reliab in a scratch worktree, as the onboard skill does:
-`reliab verify --only <id> --tier prepr`, once clean and once with a
-planted failure, then `reliab report route`. The planted failure must
-become a finding with the right test and location; the clean run, none.
-Record the adapter in the role's `notes`.
+Done when the probe shows the planted failure through route and the clean
+run shows none.
 
 ## Report
 
@@ -110,48 +111,3 @@ showed, the exit-code meanings and their sources, the `check` results, the
 probe, and anything you could not test (a failure mode you could not
 provoke).
 
-## Contract
-
-**Exit and output.**
-
-- The tool ran and reported: write the findings file, with `"findings": []`
-  when it found nothing, and exit 0.
-- The tool did not run, or its output is missing or unreadable: write no
-  file, print why on stderr, and exit nonzero. reliab then reports the
-  command as failed with its exit code and log tail.
-- When the tool's exit code says something its output does not (a failing
-  baseline, nothing to test), take it as `-exit $?` and decide with it.
-- Files from an earlier run look like new failures. Delete the tool's
-  output before it runs (in the profile command), or ignore files older
-  than `RELIAB_COMMAND_START` (RFC 3339, set for each command).
-
-**Identity.** `test` is the finding's id across runs, so the same failure
-must give the same `test` every time, and every `test` in a file is unique.
-
-- A failing test: its fully qualified name (namespace, class, method,
-  parameters).
-- A mutant: `<file>: <description>`, without the line; mutants sharing one
-  are numbered ` (#2)`, ` (#3)` in source order.
-- Never a line number, a timestamp, an absolute or temp path, or a random
-  id. The line goes in `location`.
-
-**Fields.**
-
-- `location`: `file:line[:col]`, the file relative to the repository root,
-  not the tool's working directory.
-- `message`: the failure text. reliab keeps the first 2000 characters.
-- `replay`: the path of a saved seed or input that reproduces it.
-- `observed`, `expected`: the values, when the tool reports them.
-- `diff`: for a changed snapshot, the label from
-  `reliab snapdiff --json <accepted> <pending>`. An adapter reads pending
-  snapshots and never accepts or writes one.
-
-**Mutation tools.** Add `mutants` (`killed`, timeouts included;
-`survived`; `notCovered`) and `mutantFiles` (the same counts per
-repo-relative file), and make every survived or not-covered mutant a
-finding. To keep only changed lines, read
-`reliab changed-lines --json --base <base>` (the profile command gets the
-base as `{base}` or `RELIAB_BASE`).
-
-**Version.** `schemaVersion` is the findings schema version the adapter was
-written against (`pkg/findings.SchemaVersion`).

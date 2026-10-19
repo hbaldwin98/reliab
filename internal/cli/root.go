@@ -48,6 +48,7 @@ func newRoot() *cobra.Command {
 		newVersionCmd(),
 		newSnapdiffCmd(),
 		newChangedLinesCmd(),
+		newDocsCmd(),
 	)
 	return root
 }

@@ -118,3 +118,15 @@ func TestFindingsCheckOutsideRepo(t *testing.T) {
 		t.Errorf("code %d out %q", code, out)
 	}
 }
+
+// reliab docs adapters prints the adapter contract for the installed
+// version, which the adapter skill reads in a repository without docs/.
+func TestDocsAdapters(t *testing.T) {
+	code, out, _ := run("docs", "adapters")
+	if code != ExitOK || !strings.HasPrefix(out, "# Writing an adapter\n") || !strings.Contains(out, "reliab findings check") {
+		t.Errorf("code %d out %.80q", code, out)
+	}
+	if code, _, errOut := run("docs", "nosuch"); code != ExitConfig || !strings.Contains(errOut, "topics: adapters") {
+		t.Errorf("unknown topic: code %d err %q", code, errOut)
+	}
+}

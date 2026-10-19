@@ -114,6 +114,12 @@ format, never by tool (paper P7), and a one-tool format breaks that.
     root), and mutant counts that disagree with the findings or each other.
     Exit 0 clean, 1 warnings, 2 a file verify would reject. It checks what
     can be checked from one file; whether ids hold across runs takes two.
+- **The contract is one page for people and agents:**
+  [docs/adapters.md](../../docs/adapters.md) (added 2026-10-19), embedded in the
+  binary and printed by `reliab docs adapters`, so it matches the installed
+  version and reaches a repository without reliab's source. It holds the
+  contract, the helpers, `findings check`, and a complete example adapter
+  for a made-up tool with its tests. The skill keeps only the workflow.
 - **Writing an adapter is an agent task, driven by the plugin's `adapter`
   skill** (`/reliab:adapter <tool> [command id]`, added 2026-10-19). An
   adapter that writes an empty file when the tool never ran turns a broken

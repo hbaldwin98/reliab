@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/hbaldwin98/reliab/docs"
 	"github.com/hbaldwin98/reliab/internal/adapters"
 	"github.com/hbaldwin98/reliab/internal/gitx"
 	"github.com/hbaldwin98/reliab/internal/profile"
@@ -191,6 +192,27 @@ func newFindingsCheckCmd() *cobra.Command {
 				return withCode(ExitFindings, fmt.Errorf("%d warnings", len(c.Warnings)))
 			}
 			return nil
+		},
+	}
+}
+
+func newDocsCmd() *cobra.Command {
+	topics := make([]string, 0, len(docs.Pages))
+	for t := range docs.Pages {
+		topics = append(topics, t)
+	}
+	sort.Strings(topics)
+	return &cobra.Command{
+		Use:   "docs <topic>",
+		Short: "Print a reference page for the installed version: " + strings.Join(topics, ", "),
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			page, ok := docs.Pages[args[0]]
+			if !ok {
+				return withCode(ExitConfig, fmt.Errorf("no page %q; topics: %s", args[0], strings.Join(topics, ", ")))
+			}
+			_, err := fmt.Fprint(cmd.OutOrStdout(), page)
+			return err
 		},
 	}
 }
