@@ -79,7 +79,10 @@ func TestInitMergesExistingFiles(t *testing.T) {
 	if s.Model != "x" || s.Permissions.Deny[0] != "Bash(rm -rf /)" {
 		t.Errorf("existing settings lost: %+v", s)
 	}
-	want := []string{"Bash(rm -rf /)", "Edit(/.reliab/**)", "Edit(/snapshots/**)", "Edit(**/golden/**)"}
+	// The profile predates self-protection, so init adds it to
+	// protected_paths, and the committed profile gets its deny rule
+	// (knowledge/decisions/protected-path-approval.md).
+	want := []string{"Bash(rm -rf /)", "Edit(/.reliab/**)", "Edit(/snapshots/**)", "Edit(**/golden/**)", "Edit(/reliability-profile.yaml)"}
 	if strings.Join(s.Permissions.Deny, ",") != strings.Join(want, ",") {
 		t.Errorf("deny = %v, want %v", s.Permissions.Deny, want)
 	}

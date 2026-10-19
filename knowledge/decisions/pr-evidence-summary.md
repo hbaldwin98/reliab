@@ -44,7 +44,14 @@ leaves the next report).
   approval, followed by the approved ones and who approved them
   ([protected-path-approval](/decisions/protected-path-approval.md); added
   2026-10-18, when a summary said "None" while a seed waited on a person).
-  `--format json` prints the same facts as one object.
+  `--format json` prints the same facts as one object. Its `questions` are
+  the Markdown section's entries, from one source (`AllQuestions`):
+  findings that need a person, each unapproved protected change (kind
+  `protected-change`), and protected paths that could not be checked
+  (`protected-unchecked`); the raw changes stay in `protected` too (added
+  2026-10-19, when `questions` was empty while the Markdown listed an
+  unapproved change, and a reviewer reading the JSON wrote a false note
+  into its verdict).
 - **Layout rules**, so a reader knows what an absent line means:
   - The top warns **Stale** when the tree changed, **Freshness unknown**
     (with the error) when the profile or tree cannot be read, and

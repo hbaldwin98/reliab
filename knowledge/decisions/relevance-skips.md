@@ -47,7 +47,9 @@ had no way to say "not relevant" as a reason.
   - a base that cannot be resolved or diffed: the command runs, and its
     relevance quotes the error. An unresolvable base never skips anything.
   A command that ran because a changed file matched records which file and
-  glob.
+  glob: a product file when one matches, then a test file, then any other
+  (added 2026-10-19: alphabetical order named a test seed ahead of the
+  product file that made the command relevant).
 - **R8: every skip is reported with its reason.** `reliab report summary`
   lists a relevance skip as "not relevant to the change" with its detail,
   and lists why each command with relevance rules ran; `reliab report

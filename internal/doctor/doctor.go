@@ -58,6 +58,12 @@ func Run(dir string) []Check {
 		return out
 	}
 	add("profile", OK, fmt.Sprintf("%s (%s)", p.Name, p.StartingCondition))
+	// The profile holds the thresholds, relevance rules, and baseline a
+	// change must pass, so it is an oracle too
+	// (knowledge/decisions/protected-path-approval.md).
+	if !profile.Protects(p, profile.DefaultPath) {
+		add("profile protection", Warn, profile.DefaultPath+" is not in protected_paths, so an agent can edit its thresholds, relevance rules, and baseline; run reliab profile init to add it")
+	}
 
 	ignored := exec.Command("git", "-C", root, "check-ignore", "-q", ".reliab/reports/x.json").Run() == nil
 	if ignored {

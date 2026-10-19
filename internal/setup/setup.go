@@ -46,6 +46,14 @@ func Init(root string, opt Options) ([]string, *profile.Profile, error) {
 	}
 	if created {
 		done = append(done, "wrote "+profile.DefaultPath+" (fill it in during stage S0)")
+	} else {
+		var msg string
+		if p, msg, err = ensureSelfProtected(root, p); err != nil {
+			return done, p, err
+		}
+		if msg != "" {
+			done = append(done, msg)
+		}
 	}
 	steps := []func(string, *profile.Profile) (string, error){ensureIgnore, ensureSettings, ensureAgents, ensureVersionPin}
 	for _, step := range steps {

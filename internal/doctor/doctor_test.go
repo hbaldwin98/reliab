@@ -1,6 +1,10 @@
 package doctor
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/hbaldwin98/reliab/internal/testrepo"
+)
 
 func TestCommandWord(t *testing.T) {
 	tests := []struct {
@@ -22,5 +26,25 @@ func TestCommandWord(t *testing.T) {
 		if got != tt.want || ok != tt.ok {
 			t.Errorf("commandWord(%q) = %q, %v; want %q, %v", tt.run, got, ok, tt.want, tt.ok)
 		}
+	}
+}
+
+// knowledge/decisions/protected-path-approval.md: a profile that does not
+// protect itself is a warning; one that does is not mentioned.
+func TestDoctorWarnsWhenTheProfileIsUnprotected(t *testing.T) {
+	check := func(extra string) *Check {
+		t.Helper()
+		for _, c := range Run(testrepo.New(t, extra+"commands:\n  build: \"true\"\n")) {
+			if c.Name == "profile protection" {
+				return &c
+			}
+		}
+		return nil
+	}
+	if c := check(""); c == nil || c.Status != Warn {
+		t.Errorf("unprotected profile: %+v", c)
+	}
+	if c := check("protected_paths: [reliability-profile.yaml]\n"); c != nil {
+		t.Errorf("protected profile: %+v", c)
 	}
 }

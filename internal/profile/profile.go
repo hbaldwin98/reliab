@@ -307,3 +307,6 @@ func toJSONValue(n *yaml.Node) (any, error) {
 	}
 	return nil, fmt.Errorf("line %d: unsupported YAML node", n.Line)
 }
+
+// Protects reports whether path matches one of p's protected_paths.
+func Protects(p *Profile, path string) bool { return matchAny(p.ProtectedPaths, path) }

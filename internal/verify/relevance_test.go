@@ -134,3 +134,22 @@ func TestFew(t *testing.T) {
 		t.Errorf("few = %q", got)
 	}
 }
+
+// The reason names the matching file that most likely made the command
+// relevant: a product file before a test file, a test file before anything
+// else, whatever their order. A test seed listed first once hid the
+// product change behind it.
+func TestRelevanceReasonPrefersProductThenTests(t *testing.T) {
+	root := feature(t)
+	testrepo.Write(t, root, "a/OrderRepository.seed", "seed")
+	testrepo.Write(t, root, "test/OrderRepositoryTest.cs", "class T {}")
+	if c := ran(run(t, Options{Root: root, Tier: "prepr"}), "faults_db"); c == nil ||
+		c.Relevance != "test/OrderRepositoryTest.cs changed since main and matches **/*Repository*" {
+		t.Errorf("test over other: %+v", c)
+	}
+	testrepo.Write(t, root, "src/orders/OrderRepository.cs", "class R {}")
+	if c := ran(run(t, Options{Root: root, Tier: "prepr"}), "faults_db"); c == nil ||
+		c.Relevance != "src/orders/OrderRepository.cs changed since main and matches **/*Repository*" {
+		t.Errorf("product over test and other: %+v", c)
+	}
+}

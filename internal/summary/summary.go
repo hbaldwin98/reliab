@@ -65,6 +65,9 @@ type Summary struct {
 	Base      string `json:"base,omitempty"`
 	BaseError string `json:"baseError,omitempty"`
 
+	// Questions are the findings that wait for a person. The JSON's
+	// questions and the Markdown's "Questions for a human" both come from
+	// AllQuestions, which adds the protected changes.
 	Questions []Item `json:"questions"`
 	// Protected are the protected files the branch changed since Base, each
 	// with the person's approval of its current content, if any. Without
@@ -117,6 +120,52 @@ type Item struct {
 	SeenIn string `json:"seenIn,omitempty"`
 	// Ask is what a person is asked to decide, for a question.
 	Ask string `json:"ask,omitempty"`
+	// Glob is the protected_paths glob a protected-change question's
+	// Subject matches.
+	Glob string `json:"glob,omitempty"`
+}
+
+// Kinds of question that are not findings.
+const (
+	// QuestionProtectedChange is a protected file changed without a
+	// person's approval of its content (R2).
+	QuestionProtectedChange = "protected-change"
+	// QuestionProtectedUnchecked says the protected paths could not be
+	// listed; Reason says why.
+	QuestionProtectedUnchecked = "protected-unchecked"
+)
+
+// AllQuestions is everything that waits for a person: the findings that
+// need one, each protected change without an approval, and a note when the
+// protected paths could not be checked. It is the one source for both the
+// JSON's questions and the Markdown's section.
+func (s *Summary) AllQuestions() []Item {
+	qs := append([]Item{}, s.Questions...)
+	for _, c := range gate.Unapproved(s.Protected) {
+		qs = append(qs, Item{
+			Kind:    QuestionProtectedChange,
+			Subject: c.Path,
+			Glob:    c.Glob,
+			Ask:     fmt.Sprintf("approve this content with `reliab approve %s --by human:<name>`, or have the change reverted (R2)", c.Path),
+		})
+	}
+	if s.ProtectedError != "" {
+		qs = append(qs, Item{
+			Kind:   QuestionProtectedUnchecked,
+			Reason: oneLine(s.ProtectedError),
+			Ask:    "run `reliab gate protected --base <ref>`",
+		})
+	}
+	return qs
+}
+
+// MarshalJSON writes AllQuestions as questions, so the JSON and the
+// Markdown hold the same questions.
+func (s *Summary) MarshalJSON() ([]byte, error) {
+	type plain Summary
+	out := plain(*s)
+	out.Questions = s.AllQuestions()
+	return json.Marshal(out)
 }
 
 // asks is what a person decides for each kind that stops for one: the
@@ -533,25 +582,29 @@ func Markdown(s *Summary) string {
 	table(fmt.Sprintf("Reported earlier by commands this report did not run (%d), so not re-checked:", len(s.NotRechecked)), s.NotRechecked, true)
 
 	p("\n#### Questions for a human\n\n")
-	unapproved := gate.Unapproved(s.Protected)
-	if len(s.Questions) == 0 && len(unapproved) == 0 && s.ProtectedError == "" {
+	qs := s.AllQuestions()
+	if len(qs) == 0 {
 		p("None: no open finding or protected-path change waits for a person.\n")
 	}
-	for i, q := range s.Questions {
-		p("%d. `%s` [%s] %s: %s", i+1, q.ID, q.Kind, subject(q), q.Ask)
+	n := 0
+	for _, q := range qs {
+		// if, not switch: see above.
+		if q.Kind == QuestionProtectedUnchecked {
+			p("- Protected paths not checked: %s. Run `reliab gate protected --base <ref>`.\n", q.Reason)
+			continue
+		}
+		n++
+		if q.Kind == QuestionProtectedChange {
+			p("%d. `%s` (protected by `%s`) changed since `%s` without a person's approval: %s\n", n, q.Subject, q.Glob, s.Base, q.Ask)
+			continue
+		}
+		p("%d. `%s` [%s] %s: %s", n, q.ID, q.Kind, subject(q), q.Ask)
 		if q.Reason != "" {
 			p(". Recorded reason: %q", oneLine(q.Reason))
 		}
 		p("\n")
 	}
-	for i, c := range unapproved {
-		p("%d. `%s` (protected by `%s`) changed since `%s` without a person's approval: approve this content with `reliab approve %s --by human:<name>`, or have the change reverted (R2)\n",
-			len(s.Questions)+i+1, c.Path, c.Glob, s.Base, c.Path)
-	}
-	if s.ProtectedError != "" {
-		p("- Protected paths not checked: %s. Run `reliab gate protected --base <ref>`.\n", oneLine(s.ProtectedError))
-	}
-	if len(unapproved) < len(s.Protected) {
+	if len(gate.Unapproved(s.Protected)) < len(s.Protected) {
 		p("\nProtected changes a person approved (a local record; CI and the code host's review still decide):\n\n")
 		for _, c := range s.Protected {
 			if a := c.Approval; a != nil {

@@ -51,6 +51,13 @@ waited on a person.
     a repository can write it; committing it turns its protection on, and
     re-running `reliab profile init` adds its deny rule (`reliab doctor`
     warns until then). The onboard skill tells the person so.
+  - **Older profiles.** Re-running `reliab profile init` on a profile
+    written before it protected itself adds `reliability-profile.yaml` to
+    `protected_paths`, editing the text so formatting and comments stay (a
+    one-line list, a block list, or a new key); any other shape is left
+    alone with a loud warning. `reliab doctor` warns while the profile does
+    not protect itself (added 2026-10-19: an older profile stayed editable
+    by agents, thresholds and baseline included, and init said nothing).
   - **The base's globs count too.** `reliab gate protected`, and so the
     summary and `reliab approve`, match changed files against the profile's
     `protected_paths` and those of the profile on the merge base, so a
