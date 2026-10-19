@@ -29,11 +29,17 @@ roles:
   T11: { applicable: false, reason: no data store }
   T12: { tool: go test -coverprofile, verified: 2026-10-17 }
   T13: { applicable: false, reason: no old implementation to shadow }
-  T14: { tool: golangci-lint, version: v2.15.0, verified: 2026-10-17, notes: must be built with Go >= the go.mod version }
+  T14: { tool: golangci-lint, version: v2.15.0, verified: 2026-10-17, notes: "must be built with Go >= the go.mod version; its JSON goes through cmd/adapters/golangci-lint (findings)" }
 
 commands:
   build: go build ./...
-  analyzers: golangci-lint run
+  # golangci-lint's JSON through cmd/adapters/golangci-lint: each issue its
+  # own finding, with an id that survives moved code; a config or build
+  # error (exit 3, 7) fails the run instead of reading as clean.
+  analyzers:
+    run: rm -f .reliab/out/lint.json; golangci-lint run --output.json.path .reliab/out/lint.json ./...; go run ./cmd/adapters/golangci-lint -exit $? .reliab/out/lint.json .reliab/out/analyzers.json
+    format: findings
+    output: .reliab/out/analyzers.json
   unit:
     run: gotestsum --junitfile .reliab/out/unit.xml -- {impacted}
     format: junit
