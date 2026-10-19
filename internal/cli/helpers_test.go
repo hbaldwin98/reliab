@@ -79,3 +79,42 @@ func TestToRanges(t *testing.T) {
 		}
 	}
 }
+
+// reliab findings check lets an adapter's author see its findings file as
+// verify will, before wiring it: 0 clean, 1 warnings, 2 rejected.
+func TestFindingsCheckHelper(t *testing.T) {
+	root := testrepo.New(t, "commands:\n  build: \"true\"\n")
+	t.Chdir(root)
+	testrepo.Write(t, root, "ok.json", `{"schemaVersion":"0.4.0","mutants":{"killed":1,"survived":1},"findings":[{"test":"src/a/a.txt: negate","location":"src/a/a.txt:1:1"}]}`)
+	testrepo.Write(t, root, "warn.json", `{"schemaVersion":"0.4.0","findings":[{"test":"a.txt:1: negate","location":"a.txt:1:1"}]}`)
+	testrepo.Write(t, root, "bad.json", `{"schemaVersion":"0.4.0","findings":[{"test":"a"},{"test":"a"}]}`)
+
+	code, out, errOut := run("findings", "check", "ok.json")
+	if code != ExitOK || !strings.Contains(out, "ok.json: 1 findings\n  src/a/a.txt: negate  (src/a/a.txt:1:1)\n") || !strings.Contains(out, "mutants: 1 killed, 1 survived") {
+		t.Errorf("clean: code %d out %q err %q", code, out, errOut)
+	}
+	if strings.Contains(out, "paths not checked") {
+		t.Errorf("in a repository: %q", out)
+	}
+	code, out, _ = run("findings", "check", "warn.json")
+	if code != ExitFindings || strings.Count(out, "warning:") != 2 || !strings.Contains(out, "names a line") || !strings.Contains(out, "a.txt is not a file in the repository") {
+		t.Errorf("warnings: code %d out %q", code, out)
+	}
+	if code, _, errOut = run("findings", "check", "bad.json"); code != ExitConfig || !strings.Contains(errOut, "verify would reject it") {
+		t.Errorf("rejected: code %d err %q", code, errOut)
+	}
+	if code, _, _ = run("findings", "check", "missing.json"); code != ExitConfig {
+		t.Errorf("missing file: code %d", code)
+	}
+}
+
+// Outside a repository the paths cannot be checked, and the output says so
+// rather than passing them silently.
+func TestFindingsCheckOutsideRepo(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	testrepo.Write(t, dir, "ok.json", `{"schemaVersion":"0.4.0","findings":[{"test":"x","location":"nowhere.rs:1"}]}`)
+	if code, out, _ := run("findings", "check", "ok.json"); code != ExitOK || !strings.Contains(out, "paths not checked") {
+		t.Errorf("code %d out %q", code, out)
+	}
+}

@@ -269,15 +269,21 @@ func relLocation(root, loc string) string {
 	if loc == "" || root == "" {
 		return loc
 	}
+	file, rest := splitLocation(loc)
+	return rel(root, file) + rest
+}
+
+// splitLocation splits file:line[:col] into the file and the rest, colon
+// included.
+func splitLocation(loc string) (file, rest string) {
 	start := 0
 	if len(loc) > 2 && loc[1] == ':' && (loc[2] == '/' || loc[2] == '\\') {
 		start = 2
 	}
-	file, rest := loc, ""
 	if i := strings.Index(loc[start:], ":"); i >= 0 {
-		file, rest = loc[:start+i], loc[start+i:]
+		return loc[:start+i], loc[start+i:]
 	}
-	return rel(root, file) + rest
+	return loc, ""
 }
 
 func truncate(s string) string {

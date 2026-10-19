@@ -210,7 +210,7 @@ func newFindingsCmd() *cobra.Command {
 	ack.Flags().StringVar(&by, "by", "", "who decided, e.g. human:<name>")
 	_ = ack.MarkFlagRequired("by")
 
-	return group("findings", "Manage findings in the latest reports", classify, ack)
+	return group("findings", "Manage findings in the latest reports, and check an adapter's findings file", classify, ack, newFindingsCheckCmd())
 }
 
 func newHookCmd() *cobra.Command {

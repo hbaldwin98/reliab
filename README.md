@@ -111,8 +111,12 @@ additive-only or values-changed) beside its binary and puts them on PATH for
 profile commands. Adapters share reliab's rules through helpers:
 `reliab snapdiff <accepted> <pending>` labels a snapshot change,
 `reliab changed-lines` prints the lines changed since the base, and Go
-adapters can import `pkg/snapdiff` and `pkg/findings`. See
-[knowledge/decisions/external-adapters.md](knowledge/decisions/external-adapters.md).
+adapters can import `pkg/snapdiff` and `pkg/findings`. To write one, run the
+plugin's `adapter` skill (`/reliab:adapter <tool>`): it captures the tool's real
+output as fixtures, tests the adapter on them, and checks each file with
+`reliab findings check <file>`, which reads it as verify would and warns
+about unstable ids, paths outside the repository, and counts that disagree.
+See [knowledge/decisions/external-adapters.md](knowledge/decisions/external-adapters.md).
 
 ## CI
 

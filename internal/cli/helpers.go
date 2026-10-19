@@ -3,12 +3,14 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/hbaldwin98/reliab/internal/adapters"
 	"github.com/hbaldwin98/reliab/internal/gitx"
 	"github.com/hbaldwin98/reliab/internal/profile"
 	"github.com/hbaldwin98/reliab/pkg/snapdiff"
@@ -144,4 +146,51 @@ func toRanges(lines map[int]bool) [][2]int {
 		out = append(out, [2]int{n, n})
 	}
 	return out
+}
+
+func newFindingsCheckCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "check <findings.json>",
+		Short: "Check an adapter's findings file before a profile command uses it",
+		Long: "Reads a findings file (schemas/findings.schema.json) as reliab verify would and prints\n" +
+			"each finding's test and location, the mutant counts, and warnings about what would make\n" +
+			"findings unstable or misleading in a report: a test that names a line or a path from this\n" +
+			"machine, a location or mutantFiles path that is not a file in the repository, and counts\n" +
+			"that do not match the findings. Paths are checked against the repository holding the\n" +
+			"working directory. Exit 0 clean, 1 warnings, 2 a file verify would reject.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			raw, err := os.ReadFile(args[0])
+			if err != nil {
+				return withCode(ExitConfig, err)
+			}
+			root, _ := gitx.Root(".")
+			c, err := adapters.CheckFindings(raw, root)
+			if err != nil {
+				return withCode(ExitConfig, fmt.Errorf("%s: reliab verify would reject it: %w", args[0], err))
+			}
+			out := cmd.OutOrStdout()
+			fmt.Fprintf(out, "%s: %d findings\n", args[0], len(c.Findings))
+			for _, f := range c.Findings {
+				if f.Location != "" {
+					fmt.Fprintf(out, "  %s  (%s)\n", f.Test, f.Location)
+				} else {
+					fmt.Fprintf(out, "  %s\n", f.Test)
+				}
+			}
+			if m := c.Mutants; m != nil {
+				fmt.Fprintf(out, "mutants: %d killed, %d survived, %d not covered; %d files\n", m.Killed, m.Survived, m.NotCovered, len(c.MutantFiles))
+			}
+			if root == "" {
+				fmt.Fprintln(out, "paths not checked: the working directory is not in a git repository")
+			}
+			for _, w := range c.Warnings {
+				fmt.Fprintln(out, "warning:", w)
+			}
+			if len(c.Warnings) > 0 {
+				return withCode(ExitFindings, fmt.Errorf("%d warnings", len(c.Warnings)))
+			}
+			return nil
+		},
+	}
 }

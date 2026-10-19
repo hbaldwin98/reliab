@@ -191,10 +191,10 @@ commands: `reliab-adapter-cargo-mutants`, `reliab-adapter-gremlins`,
 `reliab-adapter-insta`, and `reliab-adapter-verify` (Verify snapshots).
 Each prints its usage with `-h`; outside a profile command they sit beside
 the binary, in `~/.cache/reliab/<version>/` for a release. Prefer one that fits over
-reading the tool's raw output. A small
-helper script can lean on `reliab changed-lines` (what the branch changed)
-and `reliab snapdiff` (label a pending snapshot). If none fits, record it as
-an open question rather than writing a large adapter during S0.
+reading the tool's raw output. If none fits and the tool's output is
+simple, write a small adapter with the `adapter` skill, which tests it on
+the tool's real output. A large one is an open question for the person, not
+S0 work.
 
 ### What tools get wrong
 

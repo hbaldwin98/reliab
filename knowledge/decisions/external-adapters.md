@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: "reliab reads interchange formats; adapters convert the rest"
-description: "The core reads JUnit, TRX, mutation-testing-elements, Cobertura (counts only), and its own findings format. Tool-specific output is converted by separate adapter programs that anyone can write; reliab exposes the rules adapters share as CLI helpers and public Go packages. reliab's own adapters live in cmd/adapters and ship beside the binary."
+description: "The core reads JUnit, TRX, mutation-testing-elements, Cobertura (counts only), and its own findings format. Tool-specific output is converted by separate adapter programs that anyone can write; reliab exposes the rules adapters share as CLI helpers and public Go packages, checks an adapter's output with reliab findings check, and the plugin's adapter skill walks an agent through writing one. reliab's own adapters live in cmd/adapters and ship beside the binary."
 status: stable
 tags: [cli, verify, adapters]
 generated:
@@ -106,6 +106,25 @@ format, never by tool (paper P7), and a one-tool format breaks that.
   - `pkg/findings`: writing the findings format, mutant keys, and counts.
   - `RELIAB_COMMAND_START`, set for each command, so an adapter can ignore
     files an earlier run left in the tree.
+  - `reliab findings check <file>` (added 2026-10-19): reads a findings file
+    as verify would and warns about what makes findings unstable or
+    misleading once reported: a `test` that names a line or a path from
+    this machine, a `location` or `mutantFiles` path that is not a file in
+    the repository (relative to the tool's working directory, not the
+    root), and mutant counts that disagree with the findings or each other.
+    Exit 0 clean, 1 warnings, 2 a file verify would reject. It checks what
+    can be checked from one file; whether ids hold across runs takes two.
+- **Writing an adapter is an agent task, driven by the plugin's `adapter`
+  skill** (`/reliab:adapter <tool> [command id]`, added 2026-10-19). An
+  adapter that writes an empty file when the tool never ran turns a broken
+  command into a pass, and one whose ids move with line numbers loses every
+  classification, so the skill holds the contract (exit and output,
+  identity, fields, mutation counts) and makes the agent prove it on the
+  tool's real output: fixtures from a clean, a failing, a moved, and a
+  broken run, tests over them, `findings check` on each, and a probe
+  through `reliab verify --only`. A committed profile is protected, so the
+  agent hands the person the command to add. The onboard skill sends a
+  small adapter here and keeps a large one an open question.
 - **reliab also hosts a few adapters, as a convenience:** the ones written
   while dogfooding live in `cmd/adapters/<tool>`. They are ordinary
   external adapters with no special access: they talk to the core only
