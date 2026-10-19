@@ -78,6 +78,13 @@ list it as a question for a human until a person runs
 `reliab approve <path> --by human:<name>`; hooks deny that command to you.
 Tell the user it waits for them.
 
+The tool writes the saved case during the failing run; you only commit it.
+You cannot write a protected path, so a saved case that exists only on
+another branch or clone cannot be copied in by you (hooks deny even
+`git checkout <ref> -- <file>`). Either re-run the failing property against
+the code before the fix, so the tool writes it again, or stop and give the
+user the exact commands to copy it in. A person then runs `reliab approve`.
+
 Optionally, to show the properties have teeth, run the mutation skill on the
 same area.
 

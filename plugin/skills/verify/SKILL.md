@@ -57,7 +57,11 @@ budget and writes the one report everything else reads.
    - a failing case the tool saved under a protected path (a regression
      seed): commit it with the fix and tell the user it waits for their
      approval. A person runs `reliab approve <path> --by human:<name>`; you
-     never do, and hooks deny it to you.
+     never do, and hooks deny it to you. The tool writes the case during
+     the failing run; you only commit it. To bring one in from another
+     branch or clone, re-run the failing property against the code before
+     the fix so the tool writes it again, or stop and give the user the
+     exact commands to copy it in.
 4. Re-run the same tier until it exits 0, or until only findings that need a
    human remain.
 
