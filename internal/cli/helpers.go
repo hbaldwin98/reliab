@@ -203,10 +203,14 @@ func newDocsCmd() *cobra.Command {
 	}
 	sort.Strings(topics)
 	return &cobra.Command{
-		Use:   "docs <topic>",
+		Use:   "docs [topic]",
 		Short: "Print a reference page for the installed version: " + strings.Join(topics, ", "),
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				fmt.Fprintln(cmd.OutOrStdout(), "topics: "+strings.Join(topics, ", "))
+				return nil
+			}
 			page, ok := docs.Pages[args[0]]
 			if !ok {
 				return withCode(ExitConfig, fmt.Errorf("no page %q; topics: %s", args[0], strings.Join(topics, ", ")))

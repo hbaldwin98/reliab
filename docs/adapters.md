@@ -11,6 +11,13 @@ This page is the contract. `reliab docs adapters` prints it for the
 installed version. In Claude Code, the plugin's `adapter` skill
 (`/reliab:adapter <tool>`) walks an agent through writing one to it.
 
+**When you need one.** A pass-or-fail tool, such as a build, needs no
+adapter: a bare command is judged by its exit code. A tool that reports
+several separate problems (a linter, an analyzer, a scanner) needs one even
+when its exit code is honest. Judged by exit code, every problem shares the
+command's single finding id, so a classification or acknowledgement of one
+carries to every later failure of the command and hides new problems.
+
 ## The contract
 
 **Run the tool, then the adapter.** The command names the adapter's file as

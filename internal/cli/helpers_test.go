@@ -126,6 +126,9 @@ func TestDocsAdapters(t *testing.T) {
 	if code != ExitOK || !strings.HasPrefix(out, "# Writing an adapter\n") || !strings.Contains(out, "reliab findings check") {
 		t.Errorf("code %d out %.80q", code, out)
 	}
+	if code, out, _ := run("docs"); code != ExitOK || out != "topics: adapters\n" {
+		t.Errorf("no topic: code %d out %q", code, out)
+	}
 	if code, _, errOut := run("docs", "nosuch"); code != ExitConfig || !strings.Contains(errOut, "topics: adapters") {
 		t.Errorf("unknown topic: code %d err %q", code, errOut)
 	}

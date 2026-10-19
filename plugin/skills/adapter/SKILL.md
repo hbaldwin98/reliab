@@ -1,6 +1,6 @@
 ---
 name: adapter
-description: Write an adapter that turns a tool's output into reliab's findings file, test it on the tool's real output, and wire it into the profile. Use when a tool exits 0 with failures or writes a format reliab does not read, in a repository with reliability-profile.yaml.
+description: Hook a tool into reliab through an adapter that turns its output into reliab's findings file, tested on the tool's real output and wired into the profile. Use when a tool reports several separate problems per run (linters, analyzers, scanners), exits 0 with failures, or writes a format reliab does not read, in a repository with reliability-profile.yaml.
 argument-hint: <tool> [command id]
 ---
 
@@ -22,6 +22,13 @@ a complete adapter with its tests.
 
 ## 1. Check that one is needed
 
+- **The tool is pass or fail (a build):** a bare command, judged by its
+  exit code, is enough. A tool that reports several separate problems is
+  not: judged by exit code, every problem shares the command's one finding
+  id, so a classification or a person's acknowledgement of one carries to
+  every later failure of that command and hides new problems. It needs an
+  adapter, so each problem gets its own id, even when its exit code is
+  honest.
 - **The tool can write a format reliab reads:** JUnit XML, TRX,
   mutation-testing-elements JSON (`mutation-report`), or Cobertura. Look
   for a reporter flag in the tool's docs or `--help`. If one exists and the
@@ -30,8 +37,8 @@ a complete adapter with its tests.
   `reliab-adapter-gremlins`, `reliab-adapter-insta`,
   `reliab-adapter-verify`; each prints its usage with `-h`. Use it if it fits.
 
-Done when you can name the format or shipped adapter that fits, or say why
-none does.
+Done when you can name the bare command, format, or shipped adapter that
+fits, or say why none does.
 
 ## 2. Capture the tool's real output
 
@@ -72,7 +79,9 @@ reliab findings check <findings.json>
 
 It exits 0 for a clean file, 1 with warnings (a test that names a line or a
 machine path, a path that is not in the repository, counts that disagree
-with the findings), and 2 for a file verify would reject. Fix the adapter
+with the findings), and 2 for a file verify would reject. Run it where the
+fixture's files exist (the scratch worktree, for a file you planted
+there), or it warns that they are not in the repository. Fix the adapter
 for every warning; a warning you think is wrong goes in your report with
 why.
 
@@ -89,11 +98,17 @@ Done when:
 
 Write the profile command the way the contract's first example does: the
 tool, then the adapter with the tool's exit code, `format: findings`, and
-the adapter's file as `output`. Add the adapter to the role's `notes`.
+the adapter's file as `output`. Its id is the role's command, which sets
+the tiers it runs in: `unit` (T1), `properties` (T2), `snapshots` (T3),
+`mutation_changed` or `mutation_full` (T4), `api_fuzz` (T7), `faults_http`
+(T8, T9), `faults_db` (T10), `store_tests` (T11), `coverage` (T12),
+`analyzers` (T14). Fill the role, or add the adapter to its `notes`.
 
 Probe it in a scratch worktree with the command added there:
 `reliab verify --only <id> --tier prepr` once clean and once with a planted
-failure, then `reliab report route`. The planted failure must become a
+failure, then `reliab report route`. Run the adapter there only
+through `reliab verify`: `.reliab/` is written only by reliab, and the hooks
+deny a shell command that writes under it. The planted failure must become a
 finding with the right test and location; the clean run, none.
 
 Then wire it in the repository. `reliability-profile.yaml` is protected

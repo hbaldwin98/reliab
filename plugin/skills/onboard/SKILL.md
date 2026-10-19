@@ -184,8 +184,10 @@ Record each role as one of four:
   found (quote the error), the decision (swap, pin, or drop), the source,
   and the date. Then probe the next candidate.
 
-Tools that exit 0 with failures, or write a format reliab does not read,
-need an adapter that writes reliab's findings format (`format: findings`).
+Tools that exit 0 with failures, report several separate problems (a
+linter or analyzer: judged by exit code they share one finding id, so an
+acknowledgement of one hides the next), or write a format reliab does not
+read, need an adapter that writes reliab's findings format (`format: findings`).
 reliab ships these beside its binary and puts them on PATH for profile
 commands: `reliab-adapter-cargo-mutants`, `reliab-adapter-gremlins`,
 `reliab-adapter-insta`, and `reliab-adapter-verify` (Verify snapshots).
