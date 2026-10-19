@@ -24,7 +24,18 @@ generated:
      `reliab approve`, a person's approval of a protected-path change
      ([protected-path-approval](/decisions/protected-path-approval.md)); deny
      `reliab report verdict` unless the caller's `agent_type` is
-     `reliab:reviewer` ([reviewer-verdict](/decisions/reviewer-verdict.md));
+     `reliab:reviewer` ([reviewer-verdict](/decisions/reviewer-verdict.md)).
+     These match only text Bash may run. A Bash line whose every simple
+     command is `echo`, `cat`, `grep`, or `git add|commit|tag|notes|status|log|show|diff`
+     has its arguments and heredoc bodies blanked first, unless any command
+     on it holds, outside quotes, a comment, `$'`, parentheses, braces, a
+     redirect, or a backtick, or a substitution in its quotes or an
+     expanded heredoc body. Any other line is judged whole, as is every
+     PowerShell line. Until 2026-10-19 the words anywhere in the line were
+     denied, so a commit whose message named `reliab approve` was refused;
+     a review of the first, looser fix found nine bypasses (a comment
+     hiding a quote or heredoc, a redirect writing a script, PowerShell's
+     `( )` and curly quotes), now tests;
   2. deny commands that write, move, or delete a protected path or `.reliab/`:
      redirects (`>`, `>>`) to such a path, or a write verb (`sed -i`, `cp`,
      `mv`, `rm`, `tee`, `git checkout|restore`, `Set-Content`,

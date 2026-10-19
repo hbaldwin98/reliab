@@ -220,17 +220,24 @@ const ReviewerAgent = "reliab:reviewer"
 // without a fresh, complete pre-PR report.
 func (r *Repo) PreBash(in hookio.Input) hookio.Decision {
 	cmd := in.ToolInput.Command
-	if ackCmd.MatchString(cmd) {
+	// The person-only commands are judged on the code Bash may run, so their
+	// words in a commit message or an echo do not trip them. codeText models
+	// Bash only; a PowerShell or any other line is judged whole.
+	code := cmd
+	if in.ToolName == "Bash" {
+		code = codeText(cmd)
+	}
+	if ackCmd.MatchString(code) {
 		return hookio.Decision{Deny: "reliab: findings ack records a human decision; only a person runs it. Ask the user."}
 	}
-	if baselineWrite.MatchString(cmd) {
+	if baselineWrite.MatchString(code) {
 		return hookio.Decision{Deny: "reliab: baseline write changes the protected mutation baseline (R2); only a person runs it. Show the user reliab baseline propose and ask."}
 	}
-	if approveCmd.MatchString(cmd) {
+	if approveCmd.MatchString(code) {
 		return hookio.Decision{Deny: "reliab: approve records a person's approval of a protected-path change (R2); only a person runs it. " +
 			"List the change under questions for a human and stop; the user runs reliab approve <path> --by human:<name>."}
 	}
-	if verdictCmd.MatchString(cmd) && in.AgentType != ReviewerAgent {
+	if verdictCmd.MatchString(code) && in.AgentType != ReviewerAgent {
 		return hookio.Decision{Deny: "reliab: report verdict is the reviewer's to record, never the author's. " +
 			"After a clean reliab verify --tier prepr, have the " + ReviewerAgent + " agent review the change; it records the verdict."}
 	}
