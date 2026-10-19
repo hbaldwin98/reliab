@@ -131,6 +131,17 @@ format, never by tool (paper P7), and a one-tool format breaks that.
   through `reliab verify --only`. A committed profile is protected, so the
   agent hands the person the command to add. The onboard skill sends a
   small adapter here and keeps a large one an open question.
+- **A tool that reports several separate problems needs an adapter even
+  when its exit code is honest** (added 2026-10-19). Judged by exit code,
+  every problem shares the command's one finding id (`F-<command>`), and
+  classifications carry forward by id, so a person's acknowledgement of one
+  pre-existing lint problem covers every later failure of the command,
+  new problems included. Only a pass-or-fail tool, such as a build, is
+  left to its exit code. Found in the acceptance runs: asked to "hook go
+  vet into reliab", one fresh session wired plain `go vet` by exit code and
+  never reached the skill; with the rule stated, the next wrote an
+  adapter. reliab's own profile and the example profiles still run
+  `golangci-lint` bare; moving them is a separate change.
 - **reliab also hosts a few adapters, as a convenience:** the ones written
   while dogfooding live in `cmd/adapters/<tool>`. They are ordinary
   external adapters with no special access: they talk to the core only
