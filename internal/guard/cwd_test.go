@@ -211,6 +211,34 @@ func TestPartsGitBashDrive(t *testing.T) {
 	if got := parts(session, "cd "+filepath.ToSlash(out[len(vol):])+" && rm x", false)[1].cwds[0]; got != session {
 		t.Errorf("a rooted path with no drive went to %q, want the session's", got)
 	}
+	// /c alone is the drive's root.
+	drive := "/" + strings.ToLower(vol[:1])
+	if got := parts(session, "cd "+drive+" && rm x", false)[1].cwds[0]; !strings.EqualFold(got, vol+`\`) {
+		t.Errorf("cd %s went to %q, want %q", drive, got, vol+`\`)
+	}
+}
+
+// Windows drive letters are A to Z, in either case (Microsoft Learn,
+// "Naming Files, Paths, and Namespaces").
+func TestIsLetter(t *testing.T) {
+	for _, c := range []byte("azAZ") {
+		if !isLetter(c) {
+			t.Errorf("isLetter(%q) = false", c)
+		}
+	}
+	for _, c := range []byte("@[`{0/") {
+		if isLetter(c) {
+			t.Errorf("isLetter(%q) = true", c)
+		}
+	}
+}
+
+// An open double quote that ends in a backslash is still read, not a crash:
+// a hook that fails lets the command through.
+func TestWordsUnclosedQuoteEndingInBackslash(t *testing.T) {
+	if got := words(`echo "a\`, false); len(got) != 2 || got[0] != "echo" {
+		t.Errorf("words = %q", got)
+	}
 }
 
 // GNU Bash manual §3.1.2.3 Double Quotes: inside double quotes a backslash
@@ -286,6 +314,9 @@ func TestPreBashWhereCommandsRun(t *testing.T) {
 		{bash, "cd " + o + " && go test ./... 2>&1 && git checkout -- .", false},
 		{pwsh, `Set-Location -Path "` + out + `" && Remove-Item -Recurse snapshots`, false},
 		{pwsh, `cd ` + out + ` && Remove-Item -Recurse snapshots`, false},
+		// GNU Bash manual §3.6.8 Duplicating File Descriptors: in [n]<&word
+		// the & belongs to the redirect, as in >&; it does not end the chain.
+		{bash, "cd " + o + " && cat <&0 && rm -rf snapshots", false},
 
 		// A cd inside the repository makes a relative path protected.
 		{bash, "cd snapshots && rm s.txt", true},
@@ -300,6 +331,12 @@ func TestPreBashWhereCommandsRun(t *testing.T) {
 
 		// Fail closed: judged from the session's directory.
 		{bash, "cd " + o + " || rm -rf snapshots", true},
+		// trackable: a control character (DEL is one) makes the line doubtful.
+		{bash, "cd " + o + " && rm -rf snapshots && echo \x7f", true},
+		// A line may end in a background & (GNU Bash manual §3.2.4 Lists) or
+		// a lone backslash; the hook still judges it rather than failing.
+		{bash, "rm -rf snapshots &", true},
+		{bash, `rm -rf snapshots \`, true},
 		{bash, "cd " + o + "; rm -rf snapshots", true},
 		{bash, "cd " + o + "\nrm -rf snapshots", true},
 		{bash, "cd " + o + " && true || rm -rf snapshots", true},
