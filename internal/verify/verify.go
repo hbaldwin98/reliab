@@ -271,7 +271,7 @@ func Run(ctx context.Context, opt Options) (*report.Report, string, error) {
 		return nil, "", ctx.Err()
 	}
 
-	prev, _ := report.Read(report.LatestPath(opt.Root, reportTier))
+	prev := decisions(opt.Root)
 	carryForward(rep, prev, opt.Root)
 	// Scores read the carried classifications: a survivor a person confirmed
 	// equivalent leaves the count. A shortfall then keeps a person's
@@ -561,47 +561,82 @@ func matchAny(globs []string, path string) bool {
 	return false
 }
 
+// decided is the newest classification and the newest acknowledgement
+// recorded for one finding id, each in the finding that holds it.
+type decided struct{ classified, acked *report.Finding }
+
+// decisions collects, per finding id, the newest classification and
+// acknowledgement in any tier's latest report or in history. A decision
+// made in one tier holds in another, and through a run that skipped the
+// command or ran it on demand (knowledge/decisions/finding-classification.md).
+func decisions(root string) map[string]decided {
+	reports := report.History(root)
+	for _, t := range append(slices.Clone(TierNames), report.OnDemand) {
+		if r, err := report.Read(report.LatestPath(root, t)); err == nil {
+			reports = append(reports, r)
+		}
+	}
+	out := map[string]decided{}
+	for _, r := range reports {
+		for i := range r.Findings {
+			f := &r.Findings[i]
+			d := out[f.ID]
+			if f.Classification != nil && (d.classified == nil || newer(f.Classification.At, d.classified.Classification.At)) {
+				d.classified = f
+			}
+			if f.Acknowledged != nil && (d.acked == nil || newer(f.Acknowledged.At, d.acked.Acknowledged.At)) {
+				d.acked = f
+			}
+			out[f.ID] = d
+		}
+	}
+	return out
+}
+
+// newer reports whether timestamp a is after b; on a tie, or one that does
+// not parse, the later record read wins.
+func newer(a, b string) bool {
+	ta, errA := time.Parse(time.RFC3339, a)
+	tb, errB := time.Parse(time.RFC3339, b)
+	if errA != nil || errB != nil {
+		return a >= b
+	}
+	return !ta.Before(tb)
+}
+
 // carryForward keeps the agent's classification and any human
-// acknowledgement for findings that are still present, matched by their
-// stable id. A finding that disappeared is simply gone.
+// acknowledgement for findings that are present, matched by their stable
+// id, from the newest decision recorded for each (decisions).
 //
 // A command-level finding (no test: the command failed as a whole) has one
-// id however it failed, so it carries only while its fingerprint is the
-// same; otherwise it is judged afresh and says why
+// id however it failed, so a decision carries only while its fingerprint is
+// the same; otherwise it is judged afresh and says why
 // (knowledge/decisions/finding-classification.md).
-func carryForward(rep *report.Report, prev *report.Report, root string) {
+func carryForward(rep *report.Report, prev map[string]decided, root string) {
 	for i, f := range rep.Findings {
 		if f.Test == "" {
 			rep.Findings[i].Fingerprint = report.Fingerprint(f, root)
 		}
 	}
-	if prev == nil {
-		return
-	}
-	old := map[string]report.Finding{}
-	for _, f := range prev.Findings {
-		old[f.ID] = f
-	}
 	for i, f := range rep.Findings {
-		o, ok := old[f.ID]
+		d := prev[f.ID]
 		// An environment failure says nothing about the next run: once the
 		// machine is fixed, a failure there is judged afresh.
-		if !ok || o.Kind == report.KindEnvironment {
-			continue
-		}
-		if f.Test == "" && (o.Classification != nil || o.Acknowledged != nil) {
-			if why := changedFailure(o, f); why != "" {
+		if c := d.classified; c != nil && c.Kind != report.KindEnvironment {
+			if why := carryRefused(*c, f, "classified "+c.Kind); why != "" {
 				rep.Findings[i].Reopened = why
-				continue
+			} else {
+				rep.Findings[i].Kind = c.Kind
+				rep.Findings[i].Classification = c.Classification
 			}
 		}
-		if o.Classification != nil {
-			rep.Findings[i].Kind = o.Kind
-			rep.Findings[i].Classification = o.Classification
-		}
-		if o.Acknowledged != nil {
-			rep.Findings[i].Acknowledged = o.Acknowledged
-			rep.Findings[i].Status = report.StatusAcknowledged
+		if a := d.acked; a != nil && a.Kind != report.KindEnvironment {
+			if why := carryRefused(*a, f, "acknowledged by "+a.Acknowledged.By); why != "" {
+				rep.Findings[i].Reopened = why
+			} else {
+				rep.Findings[i].Acknowledged = a.Acknowledged
+				rep.Findings[i].Status = report.StatusAcknowledged
+			}
 		}
 	}
 }
@@ -644,14 +679,14 @@ func budgetText(s int) string {
 	return (time.Duration(s) * time.Second).String()
 }
 
-// changedFailure says why a command-level finding's earlier classification
-// or acknowledgement does not carry, or "" when the failure is the same.
-// An earlier report without a fingerprint cannot show that, so nothing
-// carries from it.
-func changedFailure(old, cur report.Finding) string {
-	what := "classified " + old.Kind
-	if old.Acknowledged != nil {
-		what = "acknowledged by " + old.Acknowledged.By
+// carryRefused says why a command-level finding's earlier decision (what)
+// does not carry to cur, or "" when it does: always for a finding with a
+// test, and for a command-level one while the failure is the same. An
+// earlier report without a fingerprint cannot show that, so nothing carries
+// from it.
+func carryRefused(old, cur report.Finding, what string) string {
+	if cur.Test != "" {
+		return ""
 	}
 	if old.Fingerprint == "" {
 		return "it was " + what + " in a report that recorded no fingerprint of the failure, so that decision was not carried; judge it afresh"

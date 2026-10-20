@@ -84,6 +84,16 @@ findings bookkeeping that would hold the classification is deferred from v0.
   adapter acceptance runs: a linter wired by exit code reported every
   problem as `F-analyzers`, so a person's acknowledgement of one
   pre-existing problem covered every later one.
+- **A decision holds in every tier and through runs without the finding**
+  (added 2026-10-19). verify carries the newest classification and the
+  newest acknowledgement recorded for a finding id in any tier's latest
+  report or in history, judged by when each was made, not only the previous
+  run of the same tier. A finding classified in prepr keeps its kind in the
+  next inner run, and one that a run did not report (it passed, its command
+  was skipped as not relevant or out of budget, or another tier ran) keeps
+  it when it comes back. The fingerprint rule above still holds for
+  command-level findings, and `environment` still never carries. Found on a
+  consumer repository, where every new run had to be classified again.
 - `below-threshold` (added 2026-10-18) is a mutation score short of the
   profile's threshold or a baseline scope's score. verify derives it from
   the counts and the survivors; it is never classified, routes the agent to

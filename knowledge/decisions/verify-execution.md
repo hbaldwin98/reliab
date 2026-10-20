@@ -57,11 +57,12 @@ generated:
 - **Findings.** A command with a parsed format yields one finding per failing
   test; otherwise, or when the tool failed without reporting a failing test,
   a nonzero exit yields one finding carrying the log tail. Ids are stable,
-  `F-<command>` or `F-<command>-<hash of test name>`, so the next run of the
-  same tier carries forward the agent's classification and any human
-  acknowledgement for findings that are still present; an `F-<command>`
-  finding only while its failure's fingerprint is the same
-  ([finding-classification](/decisions/finding-classification.md)).
+  `F-<command>` or `F-<command>-<hash of test name>`, so a run carries
+  forward the newest classification and the newest human acknowledgement
+  recorded for each finding it reports, from any tier's latest report or
+  history (since 2026-10-19; before, only from the previous run of the same
+  tier); an `F-<command>` finding only while its failure's fingerprint is
+  the same ([finding-classification](/decisions/finding-classification.md)).
 - **Tree hash.** Taken at the start of the run, always excluding `.reliab/**`
   so reliab's own output never makes a report stale
   ([report-freshness](/decisions/report-freshness.md)).

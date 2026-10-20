@@ -158,3 +158,34 @@ func TestUnjudgedCommandFindingIsNotReopened(t *testing.T) {
 		t.Errorf("unjudged finding whose failure changed: %+v", f)
 	}
 }
+
+// knowledge/decisions/finding-classification.md: a decision holds for its
+// finding in every tier and through runs that did not report it (passed,
+// skipped, or another tier ran). Found on a consumer repository, where each
+// new run had to be classified again.
+func TestDecisionCarriesAcrossTiersAndAbsentRuns(t *testing.T) {
+	root := repo(t, "commands:\n  unit:\n    run: if test -f src/fail; then printf '{\"schemaVersion\":\"0.4.0\",\"findings\":[{\"test\":\"pkg.TestA\",\"message\":\"want 1\"}]}'; else printf '{\"schemaVersion\":\"0.4.0\",\"findings\":[]}'; fi > out.json\n    format: findings\n    output: out.json\ntiers:\n  inner: { run: [unit] }\n  prepr: { run: [unit] }\n")
+	testrepo.Write(t, root, "src/fail", "")
+	id := run(t, Options{Root: root, Tier: "prepr"}).Findings[0].ID
+	if _, err := triage.Classify(root, id, report.KindLegacyDefectOrQuirk, "known", carryAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := triage.Acknowledge(root, id, "human:owner", carryAt); err != nil {
+		t.Fatal(err)
+	}
+	check := func(what string, rep *report.Report) {
+		t.Helper()
+		if len(rep.Findings) != 1 || rep.Findings[0].Kind != report.KindLegacyDefectOrQuirk || rep.Findings[0].Status != report.StatusAcknowledged {
+			t.Errorf("%s: %+v", what, rep.Findings)
+		}
+	}
+	check("inner after prepr", run(t, Options{Root: root, Tier: "inner"}))
+	if err := os.Remove(filepath.Join(root, "src", "fail")); err != nil {
+		t.Fatal(err)
+	}
+	if rep := run(t, Options{Root: root, Tier: "prepr"}); len(rep.Findings) != 0 {
+		t.Fatalf("passing run: %+v", rep.Findings)
+	}
+	testrepo.Write(t, root, "src/fail", "")
+	check("prepr after a run without it", run(t, Options{Root: root, Tier: "prepr"}))
+}
