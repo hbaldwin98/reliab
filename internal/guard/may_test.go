@@ -62,6 +62,64 @@ func TestPartsMayRun(t *testing.T) {
 	}
 }
 
+// knowledge/decisions/hook-decisions-v0.md: an option naming a file for
+// output is a write target: git-diff(1) --output=<file> or --output <file>;
+// Invoke-WebRequest -OutFile <path> or, as PowerShell binds any parameter,
+// -OutFile:<path> (about_Parameters); git-format-patch(1) -o <dir>, the
+// value attached or not (gitcli(7): a short option's value may be stuck);
+// curl(1) -o. git-ls-files(1) -o is --others and names no output, and an
+// option with no word after it names nothing.
+func TestOutputs(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		ws   []string
+		want []string
+	}{
+		{[]string{"git", "diff", "--output=Snap/x"}, []string{"Snap/x"}},
+		{[]string{"git", "diff", "--output", "Snap/x"}, []string{"Snap/x"}},
+		{[]string{"Invoke-WebRequest", "u", "-OutFile:Snap\\x"}, []string{"Snap\\x"}},
+		{[]string{"Invoke-WebRequest", "u", "-OutFile", "x"}, []string{"x"}},
+		{[]string{"git", "format-patch", "-oDir"}, []string{"Dir"}},
+		{[]string{"git", "format-patch", "-o", "Dir"}, []string{"Dir"}},
+		{[]string{"curl", "-o", "x", "u"}, []string{"x"}},
+		{[]string{"git", "ls-files", "-o", "x"}, nil},
+		{[]string{"echo", "-oops", "x"}, nil},
+		{[]string{"curl", "u", "-o"}, nil},
+		{[]string{"git", "diff", "--output"}, nil},
+	}
+	for _, tt := range tests {
+		if got := outputs(tt.ws); !slices.Equal(got, tt.want) {
+			t.Errorf("outputs(%q) = %q, want %q", tt.ws, got, tt.want)
+		}
+	}
+}
+
+// knowledge/decisions/hook-decisions-v0.md: after a cd the hook cannot
+// follow, a path is judged from every directory holding a file git sees;
+// and env(1) -C moves its command into the directory it names, from
+// wherever the command may run, so after cd src; the -C path resolves
+// from src too.
+func TestPreBashFromEveryDirectory(t *testing.T) {
+	t.Parallel()
+	r := open(t, "protected_paths: [\"src/a/oracle.txt\", \"snapshots/**\"]\ncommands:\n  build: \"true\"\n")
+	bash := func(cmd string) hookio.Decision {
+		return r.PreBash(hookio.Input{ToolName: "Bash", Cwd: r.Root, ToolInput: hookio.ToolInput{Command: cmd}})
+	}
+	for _, tt := range []struct {
+		cmd  string
+		deny bool
+	}{
+		{"cd $D && rm oracle.txt", true},
+		{"cd $D && rm other.txt", false},
+		{"cd src; env -C ../snapshots rm s.txt", true},
+		{"env -C ../snapshots rm s.txt", false},
+	} {
+		if d := bash(tt.cmd); (d.Deny != "") != tt.deny {
+			t.Errorf("%q: deny=%q, want deny=%v", tt.cmd, d.Deny, tt.deny)
+		}
+	}
+}
+
 // knowledge/decisions/hook-decisions-v0.md: deny commands that write a
 // protected path, wherever the command may run (GNU Bash manual §3.2.4,
 // §4.1); output redirects of every form, >&word included (§3.6.4

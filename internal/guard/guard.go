@@ -421,8 +421,9 @@ func (r *Repo) target(cwd, t string) []string {
 	}
 	out := r.rels(cwd, t)
 	// Git Bash on Windows names drive C: /c, as cdTarget reads it.
-	if runtime.GOOS == "windows" && len(t) >= 2 && t[0] == '/' && isLetter(t[1]) && (len(t) == 2 || t[2] == '/') {
-		out = append(out, r.rels(cwd, t[1:2]+":/"+t[min(3, len(t)):])...)
+	// A drive's root itself (/c) holds no repository's file.
+	if runtime.GOOS == "windows" && len(t) > 2 && t[0] == '/' && isLetter(t[1]) && t[2] == '/' {
+		out = append(out, r.rels(cwd, t[1:2]+":/"+t[3:])...)
 	}
 	return out
 }
@@ -507,7 +508,7 @@ func outputs(ws []string) []string {
 			if k+1 < len(ws) {
 				out = append(out, ws[k+1])
 			}
-		case short != "" && len(w) > len(short) && strings.HasPrefix(w, short):
+		case short != "" && strings.HasPrefix(w, short):
 			out = append(out, w[len(short):])
 		}
 	}
