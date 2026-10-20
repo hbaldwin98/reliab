@@ -148,3 +148,13 @@ func TestTestFindingCarriesWhateverItsMessage(t *testing.T) {
 		t.Errorf("test finding: %+v", f)
 	}
 }
+
+// reopened says a failure changed since it was classified or acknowledged;
+// a finding never judged has nothing to reopen.
+func TestUnjudgedCommandFindingIsNotReopened(t *testing.T) {
+	root := repo(t, carryProfile)
+	lintRun(t, root, "a.go:3: unused variable x\n")
+	if f := lintRun(t, root, "b.go:9: unreachable code\n"); f.Kind != report.KindUnclassified || f.Reopened != "" {
+		t.Errorf("unjudged finding whose failure changed: %+v", f)
+	}
+}
