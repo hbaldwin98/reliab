@@ -3,9 +3,13 @@ package triage
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/hbaldwin98/reliab/internal/report"
 	"github.com/hbaldwin98/reliab/internal/testrepo"
 	"github.com/hbaldwin98/reliab/internal/verify"
 )
@@ -87,5 +91,38 @@ func TestFirstLines(t *testing.T) {
 	}
 	if got := firstLines(long+"\n9", 4); got != "1\n  2\n  3\n  4\n  ...\n  7\n  8\n  9" {
 		t.Errorf("long message = %q", got)
+	}
+}
+
+// A command-level finding that fails differently after it was classified
+// comes back open, and route prints why; one never reopened prints nothing
+// (knowledge/decisions/finding-classification.md).
+func TestRouteSaysWhyAFindingReopened(t *testing.T) {
+	root := testrepo.New(t, `commands:
+  analyzers: cat msg >&2; exit 1
+`)
+	msg := filepath.Join(root, "msg")
+	routed := func(text string) string {
+		t.Helper()
+		if err := os.WriteFile(msg, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := verify.Run(context.Background(), verify.Options{Root: root, Profile: "reliability-profile.yaml", Tier: "inner"}); err != nil {
+			t.Fatal(err)
+		}
+		var buf bytes.Buffer
+		if _, err := Route(&buf, root); err != nil {
+			t.Fatal(err)
+		}
+		return buf.String()
+	}
+	if out := routed("a.go:3: unused variable x\n"); strings.Contains(out, "reopened:") {
+		t.Errorf("route = %q, want no reopened line on a first failure", out)
+	}
+	if _, err := Classify(root, "F-analyzers", report.KindLegacyDefectOrQuirk, "known", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if out := routed("b.go:9: unreachable code\n"); !strings.Contains(out, "  reopened: the failure changed since it was classified legacy-defect-or-quirk") {
+		t.Errorf("route = %q, want the reopened reason", out)
 	}
 }
