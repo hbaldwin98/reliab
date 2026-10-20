@@ -317,6 +317,9 @@ func TestPreBashWhereCommandsRun(t *testing.T) {
 		// GNU Bash manual §3.6.8 Duplicating File Descriptors: in [n]<&word
 		// the & belongs to the redirect, as in >&; it does not end the chain.
 		{bash, "cd " + o + " && cat <&0 && rm -rf snapshots", false},
+		// GNU coreutils ls: -C lists entries by columns. A directory flag
+		// with no word after it is judged, not read past the line's end.
+		{bash, "ls -C", false},
 
 		// A cd inside the repository makes a relative path protected.
 		{bash, "cd snapshots && rm s.txt", true},
@@ -328,6 +331,14 @@ func TestPreBashWhereCommandsRun(t *testing.T) {
 		{bash, "cd " + o + ` && "cd" ` + root + " && rm -rf snapshots", true},
 		{pwsh, `Set-Location src && Remove-Item -Recurse ..\snapshots`, true},
 		{bash, "cd " + o + " && env -C " + root + " rm -rf snapshots", true},
+
+		// GNU Bash manual §3.6 Redirections: a command performs each of its
+		// redirections, so a later one writes as surely as the first.
+		{bash, "echo hi > out.txt 2> snapshots/s.txt", true},
+		{bash, "go test ./... 2>snapshots/s.txt", true},
+		{bash, "go test ./... &> snapshots/s.txt", true},
+		{bash, "echo hi >| snapshots/s.txt", true},
+		{bash, "go test ./... > out.txt 2>&1", false},
 
 		// Fail closed: judged from the session's directory.
 		{bash, "cd " + o + " || rm -rf snapshots", true},
@@ -416,5 +427,19 @@ func TestPreBashCdOtherCase(t *testing.T) {
 	cmd := "cd " + strings.ToUpper(filepath.ToSlash(filepath.Join(r.Root, "src"))) + " && rm -rf ../snapshots"
 	if d := r.PreBash(hookio.Input{ToolName: "Bash", Cwd: r.Root, ToolInput: hookio.ToolInput{Command: cmd}}); d.Deny == "" {
 		t.Errorf("%q was allowed", cmd)
+	}
+}
+
+// A relative path resolves in the session's directory, which the hook
+// input's cwd names (knowledge/decisions/hook-decisions-v0.md), not the
+// repository root.
+func TestPreBashFromASubdirectory(t *testing.T) {
+	r := open(t, passing)
+	src := filepath.Join(r.Root, "src")
+	if d := r.PreBash(hookio.Input{ToolName: "Bash", Cwd: src, ToolInput: hookio.ToolInput{Command: "rm -rf ../snapshots"}}); d.Deny == "" {
+		t.Error("rm -rf ../snapshots from src: allowed, want denied")
+	}
+	if d := r.PreBash(hookio.Input{ToolName: "Bash", Cwd: src, ToolInput: hookio.ToolInput{Command: "rm -rf snapshots"}}); d.Deny != "" {
+		t.Errorf("rm -rf snapshots from src: denied (%s), want allowed: src/snapshots is not protected", d.Deny)
 	}
 }

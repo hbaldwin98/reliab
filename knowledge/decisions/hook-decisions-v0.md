@@ -37,7 +37,9 @@ generated:
      hiding a quote or heredoc, a redirect writing a script, PowerShell's
      `( )` and curly quotes), now tests;
   2. deny commands that write, move, or delete a protected path or `.reliab/`:
-     redirects (`>`, `>>`) to such a path, or a write verb (`sed -i`, `cp`,
+     redirects (`>`, `>>`, numbered as in `2>`, `&>`, and `>|`; until
+     2026-10-20 a numbered or `&` redirect and `>|` were missed) to such a
+     path, or a write verb (`sed -i`, `cp`,
      `mv`, `rm`, `tee`, `git checkout|restore`, `Set-Content`,
      `Remove-Item`, and similar) followed by one in the same simple command
      (the command line split at `;`, `&`, `|`, and newlines). Heuristic and

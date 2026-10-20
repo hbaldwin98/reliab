@@ -198,8 +198,10 @@ var (
 	dirVerb = regexp.MustCompile(`(?i)(^|[\s;&|(])(rm|rmdir|git\s+(checkout|restore|rm|clean|reset)|remove-item)\b`)
 	// commandSep splits a command line into simple commands.
 	commandSep = regexp.MustCompile(`[;&|\n]+`)
-	redirect   = regexp.MustCompile(`(^|[^0-9&])>{1,2}\s*([^\s;&|>]+)`)
-	pushCmd    = regexp.MustCompile(`(?i)\bgit\b[^;&|\n]*\bpush\b|\bgh\s+pr\s+create\b`)
+	// redirect matches every output redirect, a numbered (2>) or &> one too
+	// (GNU Bash manual §3.6); >&1 names no file.
+	redirect = regexp.MustCompile(`(^|[^>])>{1,2}\s*([^\s;&|>]+)`)
+	pushCmd  = regexp.MustCompile(`(?i)\bgit\b[^;&|\n]*\bpush\b|\bgh\s+pr\s+create\b`)
 	// The binary may be quoted: & "C:\tools\reliab.exe" findings ack.
 	ackCmd     = regexp.MustCompile(`(?i)\breliab(\.exe|\.cmd)?["']?\s+findings\s+ack\b`)
 	approveCmd = regexp.MustCompile(`(?i)\breliab(\.exe|\.cmd)?["']?\s+approve\b`)
@@ -271,7 +273,9 @@ func (r *Repo) protectedWrite(cwd, cmd string, pwsh bool) hookio.Decision {
 		cwds []string
 	}
 	var targets []target
-	ps := parts(cwd, cmd, pwsh)
+	// >| is a redirect that overrides noclobber (GNU Bash manual §3.6.2),
+	// not a pipe; the same length keeps every offset.
+	ps := parts(cwd, strings.ReplaceAll(cmd, ">|", "> "), pwsh)
 	for _, p := range ps {
 		for _, m := range redirect.FindAllStringSubmatch(p.text, -1) {
 			targets = append(targets, target{m[2], p.cwds})
