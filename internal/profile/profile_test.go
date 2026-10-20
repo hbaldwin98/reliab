@@ -101,6 +101,11 @@ func TestParseRejections(t *testing.T) {
 		// knowledge/decisions/relevance-skips.md: relevance is a list of globs.
 		{"bad relevant_when glob", "format: junit, output: out.xml", "format: junit, output: out.xml, relevant_when: ['src/[']", "relevant_when"},
 		{"empty relevant_when", "format: junit, output: out.xml", "format: junit, output: out.xml, relevant_when: []", "relevant_when"},
+		// knowledge/decisions/named-tests.md: a command needs tests,
+		// mutation_tests, or both, each once.
+		{"unknown need", "format: junit, output: out.xml", "format: junit, output: out.xml, needs: [fixtures]", "needs"},
+		{"empty needs", "format: junit, output: out.xml", "format: junit, output: out.xml, needs: []", "needs"},
+		{"repeated need", "format: junit, output: out.xml", "format: junit, output: out.xml, needs: [tests, tests]", "needs"},
 		{"baseline not protected", "name: tiny", "name: tiny\nmutation_baseline: mutation-baseline.json", "must match protected_paths"},
 	}
 	for _, tt := range tests {
@@ -114,6 +119,19 @@ func TestParseRejections(t *testing.T) {
 				t.Fatalf("err = %v, want one mentioning %q", err, tt.want)
 			}
 		})
+	}
+}
+
+func TestNeedsParse(t *testing.T) {
+	src := strings.Replace(minimal, "format: junit, output: out.xml", "format: junit, output: out.xml, needs: [tests, mutation_tests]", 1)
+	p, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range p.Commands {
+		if c.Format == "junit" && strings.Join(c.Needs, ",") != NeedTests+","+NeedMutationTests {
+			t.Errorf("needs = %q", c.Needs)
+		}
 	}
 }
 

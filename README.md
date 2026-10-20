@@ -67,8 +67,20 @@ reliab verify --only mutation_full --scope internal/report --tier prepr
 
 This runs only those commands, under the tier's budget, with `{impacted}`,
 `{scope}`, and `RELIAB_SCOPE` narrowed to the paths, and writes a separate
-on-demand report that never satisfies the stop or push hooks. The plugin's
-`mutation` and `properties` skills drive the whole loop for one area.
+on-demand report that never satisfies the stop or push hooks.
+
+To name the tests that guard a change, in any tier:
+
+```sh
+reliab verify --tier prepr --tests "<one test run, in the runner's syntax>" --mutation-tests A,B
+```
+
+The profile's commands receive them as `{tests}`, `{mutation_tests}`,
+`RELIAB_TESTS`, and `RELIAB_MUTATION_TESTS`, the report records them, and a
+command with `needs: [tests]` leaves the run incomplete until they are named.
+
+The plugin's `mutation` and `properties` skills drive the whole loop for one
+area.
 
 Around a refactor or migration, capture an area's behavior, change it, and
 compare; the profile's `characterize` command writes the transcripts:
@@ -139,7 +151,7 @@ is used instead when present, and is optional. To use a mirror, set
 holding the archive and `checksums.txt`.
 
 Exit codes: `0` passed and complete, `1` open findings, `2` config error,
-`3` incomplete (budget ran out).
+`3` incomplete (the budget ran out, or a command needs tests named).
 
 ## Install the plugin (Claude Code)
 

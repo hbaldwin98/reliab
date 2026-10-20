@@ -599,3 +599,26 @@ func requirementSilentFor(t *testing.T, ids []string, advice string) {
 		}
 	}
 }
+
+// knowledge/decisions/named-tests.md: route prints the tests a run named
+// and each command that waits for tests to be named.
+func TestRouteNamedTestsAndNeedsInput(t *testing.T) {
+	root := testrepo.New(t, "commands:\n  store_tests:\n    run: \"true\"\n    needs: [tests]\n  mutation_changed:\n    run: \"true\"\n    needs: [mutation_tests]\n"+
+		"tiers:\n  inner: { run: [store_tests, mutation_changed] }\n")
+	opt := verify.Options{Root: root, Profile: "reliability-profile.yaml", Tier: "inner", MutationTests: []string{"Ns.A", "Ns.B"}}
+	if _, _, err := verify.Run(context.Background(), opt); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if _, err := Route(&buf, root); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"(complete=false)", "mutation tests named: Ns.A, Ns.B", "incomplete store_tests: no tests named: re-run with --tests"} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("route lacks %q:\n%s", want, buf.String())
+		}
+	}
+	if strings.Contains(buf.String(), "incomplete mutation_changed") {
+		t.Errorf("route lists a command whose tests were named:\n%s", buf.String())
+	}
+}

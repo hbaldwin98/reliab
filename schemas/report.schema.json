@@ -25,11 +25,13 @@
         "tier": { "enum": ["inner", "prepr", "nightly", "on-demand"], "description": "on-demand: the commands were chosen with verify --only." },
         "only": { "type": "array", "minItems": 1, "items": { "$ref": "profile.schema.json#/$defs/commandId" }, "description": "Commands an on-demand run was asked for." },
         "scope": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Repo-relative paths an on-demand run was narrowed to." },
+        "tests": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "description": "Test runs named with verify --tests, one spec each, opaque to reliab. See knowledge/decisions/named-tests.md." },
+        "mutationTests": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "description": "Tests named with verify --mutation-tests for mutation runs, opaque to reliab." },
         "profile": { "type": "string", "minLength": 1 },
         "startedAt": { "type": "string", "format": "date-time" },
         "elapsedSec": { "type": "number", "minimum": 0 },
         "budgetSec": { "type": "integer", "minimum": 0, "description": "0 means no budget." },
-        "complete": { "type": "boolean", "description": "False when the budget ran out before every command ran." },
+        "complete": { "type": "boolean", "description": "False when the budget ran out before every command ran, or a command needed tests named and none were (skip reason needs-input)." },
         "treeHash": { "$ref": "#/$defs/treeHash", "description": "Working-tree hash the run saw." },
         "head": { "type": "string", "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$", "description": "The HEAD commit when the run started, absent in a repository with no commits. Ties history reports to a branch (knowledge/decisions/pr-evidence-summary.md)." },
         "seed": { "type": "string" },
@@ -74,7 +76,7 @@
             "required": ["id", "reason"],
             "properties": {
               "id": { "$ref": "profile.schema.json#/$defs/commandId" },
-              "reason": { "enum": ["budget", "no-command", "not-applicable", "build-failed", "not-relevant", "role-missing"], "description": "not-relevant: the change touched no file the command's relevant_when names. role-missing: the codebase needs the command's tool role and has no tool for it yet." },
+              "reason": { "enum": ["budget", "no-command", "not-applicable", "build-failed", "not-relevant", "role-missing", "needs-input"], "description": "not-relevant: the change touched no file the command's relevant_when names. role-missing: the codebase needs the command's tool role and has no tool for it yet. needs-input: the command needs tests named (its profile needs) and none were, so the run is incomplete." },
               "detail": { "type": "string" }
             }
           }

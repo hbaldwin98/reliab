@@ -277,6 +277,12 @@ func Route(w io.Writer, root string) (int, error) {
 		return 0, nil
 	}
 	fmt.Fprintf(w, "%s report from %s (complete=%t)\n", r.Run.Tier, r.Run.StartedAt, r.Run.Complete)
+	for _, t := range r.Run.Tests {
+		fmt.Fprintf(w, "tests named: %s\n", t)
+	}
+	if len(r.Run.MutationTests) > 0 {
+		fmt.Fprintf(w, "mutation tests named: %s\n", strings.Join(r.Run.MutationTests, ", "))
+	}
 	open := 0
 	for _, f := range r.Findings {
 		if f.Status != report.StatusOpen {
@@ -347,6 +353,9 @@ func Route(w io.Writer, root string) (int, error) {
 		}
 		if s.Reason == report.SkipNotRelevant {
 			fmt.Fprintf(w, "skipped %s: not relevant: %s; report it in the PR summary (R8)\n", s.ID, s.Detail)
+		}
+		if s.Reason == report.SkipNeedsInput {
+			fmt.Fprintf(w, "incomplete %s: %s, naming the tests that guard the change\n", s.ID, s.Detail)
 		}
 	}
 	for _, c := range r.Run.Commands {

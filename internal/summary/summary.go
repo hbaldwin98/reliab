@@ -40,6 +40,11 @@ type Summary struct {
 	Head          string  `json:"head,omitempty"`
 	Seed          string  `json:"seed,omitempty"`
 	PropertyCases int     `json:"propertyCases,omitempty"`
+	// Tests and MutationTests are the selections named for the run
+	// (knowledge/decisions/named-tests.md), so a reviewer checks them
+	// against the diff.
+	Tests         []string `json:"tests,omitempty"`
+	MutationTests []string `json:"mutationTests,omitempty"`
 	// Fresh is whether the working tree still hashes to the report's tree.
 	// FreshError says why it could not be checked.
 	Fresh       bool   `json:"fresh"`
@@ -199,6 +204,7 @@ func Build(opt Options) (*Summary, error) {
 		StartedAt: r.Run.StartedAt, ElapsedSec: r.Run.ElapsedSec, BudgetSec: r.Run.BudgetSec,
 		Complete: r.Run.Complete, TreeHash: r.Run.TreeHash, Head: r.Run.Head, Seed: r.Run.Seed,
 		PropertyCases: r.Run.PropertyCases, Skipped: r.Run.Skipped, Verdict: r.Verdict,
+		Tests: r.Run.Tests, MutationTests: r.Run.MutationTests,
 		Ran: []Ran{}, Open: []Item{}, Acknowledged: []Item{}, Fixed: []Item{}, Questions: []Item{},
 	}
 	if s.Skipped == nil {
@@ -408,7 +414,7 @@ func Markdown(s *Summary) string {
 			short(s.TreeHash), short(s.CurrentTree), s.Tier)
 	}
 	if !s.Complete {
-		p("> **Incomplete:** the %s budget ran out before every command ran; see Skipped.\n\n", budget(s.BudgetSec))
+		p("> **Incomplete:** %s; see Skipped.\n\n", incomplete(s))
 	}
 
 	complete := "complete"
@@ -429,6 +435,12 @@ func Markdown(s *Summary) string {
 		p(", %d property cases", s.PropertyCases)
 	}
 	p(".\n")
+	if len(s.Tests) > 0 {
+		p("- Tests named (`--tests`): %s.\n", codeList(s.Tests))
+	}
+	if len(s.MutationTests) > 0 {
+		p("- Mutation tests named (`--mutation-tests`): %s.\n", codeList(s.MutationTests))
+	}
 	if v := s.Verdict; v == nil {
 		p("- Reviewer verdict: none recorded.\n")
 	} else {
@@ -650,6 +662,40 @@ var skipWhys = map[string]string{
 	report.SkipBuildFailed:   "the build failed",
 	report.SkipNotRelevant:   "not relevant to the change",
 	report.SkipRoleMissing:   "role needed but missing",
+	report.SkipNeedsInput:    "no tests named (incomplete)",
+}
+
+// incomplete says why the run is incomplete: tests not named, the budget,
+// or both.
+func incomplete(s *Summary) string {
+	var unnamed []string
+	budgetOut := false
+	for _, k := range s.Skipped {
+		if k.Reason == report.SkipNeedsInput {
+			unnamed = append(unnamed, k.ID)
+		}
+		if k.Reason == report.SkipBudget {
+			budgetOut = true
+		}
+	}
+	var why []string
+	if len(unnamed) > 0 {
+		why = append(why, "no tests were named for "+strings.Join(unnamed, ", ")+", which need them")
+	}
+	if budgetOut || len(unnamed) == 0 {
+		why = append(why, fmt.Sprintf("the %s budget ran out before every command ran", budget(s.BudgetSec)))
+	}
+	return strings.Join(why, ", and ")
+}
+
+// codeList renders items as inline code, separated by semicolons, since a
+// test spec may itself contain commas.
+func codeList(items []string) string {
+	out := make([]string, len(items))
+	for i, it := range items {
+		out[i] = "`" + strings.ReplaceAll(oneLine(it), "`", "'") + "`"
+	}
+	return strings.Join(out, "; ")
 }
 
 func skipWhy(reason string) string {

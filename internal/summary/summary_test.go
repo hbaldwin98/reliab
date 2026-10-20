@@ -339,3 +339,40 @@ func TestProfileChangeIsAQuestion(t *testing.T) {
 		t.Errorf("markdown lacks %q:\n%s", want, md)
 	}
 }
+
+// knowledge/decisions/named-tests.md: the summary shows the tests a run
+// named, and says a run is incomplete because a command waits for tests,
+// not because of the budget.
+func TestNamedTestsAndNeedsInput(t *testing.T) {
+	root := testrepo.New(t, "commands:\n  build: \"true\"\n  mutation_changed:\n    run: \"true\"\n    needs: [mutation_tests]\n"+
+		"tiers:\n  prepr: { run: [build, mutation_changed] }\n")
+	opt := verify.Options{Root: root, Profile: "reliability-profile.yaml", Tier: "prepr", Tests: []string{"--test A", "--where 'cat==x,y'"}}
+	if _, _, err := verify.Run(context.Background(), opt); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Build(Options{Root: root, Tier: "prepr", Base: "main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	md := Markdown(s)
+	for _, want := range []string{
+		"- Tests named (`--tests`): `--test A`; `--where 'cat==x,y'`.",
+		"> **Incomplete:** no tests were named for mutation_changed, which need them; see Skipped.",
+		"| mutation_changed | no tests named (incomplete) | no mutation tests named: re-run with --mutation-tests |",
+	} {
+		if !strings.Contains(md, want) {
+			t.Errorf("markdown lacks %q:\n%s", want, md)
+		}
+	}
+	if strings.Contains(md, "budget ran out") || strings.Contains(md, "Mutation tests named") {
+		t.Errorf("markdown names a cause or a selection the run did not have:\n%s", md)
+	}
+	var buf bytes.Buffer
+	if err := Write(&buf, s, "json"); err != nil {
+		t.Fatal(err)
+	}
+	var got struct{ Tests []string }
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil || len(got.Tests) != 2 {
+		t.Errorf("json tests = %q (%v)", got.Tests, err)
+	}
+}

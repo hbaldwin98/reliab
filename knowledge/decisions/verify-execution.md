@@ -24,6 +24,11 @@ generated:
   command's own start, so an adapter can ignore files an earlier run left),
   and `RELIAB_CAPTURE_DIR` (with `{capture}`) for the `characterize` command
   ([on-demand-characterization](/decisions/on-demand-characterization.md)).
+  `{tests}` and `{mutation_tests}` expand to the tests named with
+  `--tests` and `--mutation-tests`, one single-quoted sh word each, and
+  `RELIAB_TESTS` and `RELIAB_MUTATION_TESTS` carry them as JSON arrays,
+  always set ([named-tests](/decisions/named-tests.md)). Substitution is
+  one pass, so a value is never expanded again.
   `{impacted}` narrows only in the inner tier, or to an on-demand run's
   scope ([impacted-tests-map](/decisions/impacted-tests-map.md),
   [schema-v0-shape](/decisions/schema-v0-shape.md),

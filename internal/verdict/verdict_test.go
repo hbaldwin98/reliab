@@ -187,3 +187,25 @@ func TestCompare(t *testing.T) {
 		}
 	}
 }
+
+// knowledge/decisions/named-tests.md: a re-run with another selection of
+// named tests does not back the author's report.
+func TestCompareNamedTests(t *testing.T) {
+	named := func(tests, mutation []string) *report.Report {
+		return &report.Report{Run: report.Run{Tier: Tier, Complete: true, TreeHash: "t1", Tests: tests, MutationTests: mutation}}
+	}
+	a := named([]string{"--test A", "--test B"}, []string{"A"})
+	if p := Compare(a, named([]string{"--test A", "--test B"}, []string{"A"})); len(p) != 0 {
+		t.Fatalf("the same selection: %v", p)
+	}
+	for _, b := range []*report.Report{
+		named([]string{"--test A"}, []string{"A"}),
+		named(nil, []string{"A"}),
+		named([]string{"--test A", "--test B"}, nil),
+		named([]string{"--test A", "--test B"}, []string{"A", "B"}),
+	} {
+		if p := Compare(a, b); len(p) != 1 || !strings.Contains(p[0], "tests named differ") {
+			t.Errorf("re-run tests %q, mutation tests %q: problems %v", b.Run.Tests, b.Run.MutationTests, p)
+		}
+	}
+}

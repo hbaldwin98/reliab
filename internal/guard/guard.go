@@ -342,6 +342,9 @@ func (r *Repo) PrePush() hookio.Decision {
 	} else if !fresh {
 		return hookio.Decision{Deny: "reliab: the pre-PR report is stale; the code changed after it ran." + fix}
 	}
+	if waiting := rep.NeedsInput(); len(waiting) > 0 {
+		return hookio.Decision{Deny: "reliab: the pre-PR report is incomplete: " + needsInputText(waiting) + "." + fix}
+	}
 	if !rep.Run.Complete {
 		return hookio.Decision{Deny: "reliab: the pre-PR report is incomplete (budget ran out)." + fix}
 	}
@@ -362,6 +365,15 @@ func (r *Repo) PrePush() hookio.Decision {
 		}
 	}
 	return hookio.Decision{}
+}
+
+// needsInputText lists the commands that wait for tests to be named.
+func needsInputText(skips []report.Skip) string {
+	parts := make([]string, len(skips))
+	for i, s := range skips {
+		parts[i] = s.ID + ": " + s.Detail
+	}
+	return strings.Join(parts, "; ")
 }
 
 func (r *Repo) treeHash() (string, error) {
@@ -402,6 +414,12 @@ func (r *Repo) Stop(in hookio.Input) hookio.Decision {
 	}
 	if rep == nil {
 		return hookio.Decision{}
+	}
+	// A command that needs tests named has not run: the change is not
+	// verified until the agent names them (knowledge/decisions/named-tests.md).
+	if waiting := rep.NeedsInput(); len(waiting) > 0 {
+		return hookio.Decision{Block: fmt.Sprintf("reliab: the %s report is incomplete: %s. "+
+			"Name the tests that guard the change and re-run reliab verify --tier %s before stopping.", rep.Run.Tier, needsInputText(waiting), rep.Run.Tier)}
 	}
 	var owed []string
 	for _, f := range rep.Findings {

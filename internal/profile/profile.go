@@ -85,7 +85,18 @@ type Command struct {
 	// in the inner and prepr tiers it is skipped when the change touches
 	// none of them (knowledge/decisions/relevance-skips.md).
 	RelevantWhen []string `json:"relevant_when,omitempty"`
+	// Needs are the per-run inputs the command cannot run without: tests
+	// (verify --tests) or mutation_tests (verify --mutation-tests). Without
+	// them a relevant command leaves the run incomplete
+	// (knowledge/decisions/named-tests.md).
+	Needs []string `json:"needs,omitempty"`
 }
+
+// Per-run inputs a command can need.
+const (
+	NeedTests         = "tests"
+	NeedMutationTests = "mutation_tests"
+)
 
 func (c *Command) UnmarshalJSON(b []byte) error {
 	var s string

@@ -47,6 +47,11 @@ git worktree add --detach "$wt" HEAD
 (cd "$wt" && reliab report summary --format json)
 ```
 
+If the author's summary lists `tests` or `mutationTests`, pass each one to
+your run unchanged: one `--tests "<spec>"` per entry of `tests`, and
+`--mutation-tests` once per entry of `mutationTests`. A different selection
+does not back the author's report. Step 3 checks the selection itself.
+
 Exit 1 (findings) or 3 (budget) is a result, not an error; carry on. Compare
 the two summaries: the same commands ran and were skipped for the same
 reasons, the mutation counts agree, and every finding in your run is in the
@@ -107,6 +112,11 @@ Check each of these, and note the file and line of every problem:
    `legacy-defect-or-quirk` exists on the base too. "Reported earlier by
    commands this report did not run" findings are not fixed; list them in
    the notes without judging them.
+6. **The named tests reach the change.** When the summary lists `tests` or
+   `mutationTests`, every changed product file has a named test that
+   exercises it, and the selection includes the tests the diff adds or
+   changes. Read the specs against the diff; a narrow selection skips
+   evidence, so a changed file no named test reaches fails this check.
 
 ## 4. Record the verdict
 

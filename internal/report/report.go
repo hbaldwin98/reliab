@@ -18,7 +18,7 @@ import (
 )
 
 // SchemaVersion is the report schema version this build writes.
-const SchemaVersion = "0.10.0"
+const SchemaVersion = "0.11.0"
 
 // Dir is where reports live, relative to the repo root. Only reliab writes
 // here; see knowledge/decisions/report-storage.md.
@@ -71,6 +71,8 @@ type Run struct {
 	Tier          string          `json:"tier"`
 	Only          []string        `json:"only,omitempty"`
 	Scope         []string        `json:"scope,omitempty"`
+	Tests         []string        `json:"tests,omitempty"`         // verify --tests, as given
+	MutationTests []string        `json:"mutationTests,omitempty"` // verify --mutation-tests, as given
 	Profile       string          `json:"profile"`
 	StartedAt     string          `json:"startedAt"`
 	ElapsedSec    float64         `json:"elapsedSec"`
@@ -190,6 +192,9 @@ const (
 	// SkipRoleMissing: the codebase needs the command's tool role but has
 	// no tool for it yet.
 	SkipRoleMissing = "role-missing"
+	// SkipNeedsInput: the command needs tests named for the run and none
+	// were; the run is incomplete until they are.
+	SkipNeedsInput = "needs-input"
 )
 
 type Skip struct {
@@ -258,6 +263,17 @@ type Verdict struct {
 	TreeHash       string `json:"treeHash,omitempty"`
 	Head           string `json:"head,omitempty"`
 	RerunStartedAt string `json:"rerunStartedAt,omitempty"`
+}
+
+// NeedsInput returns the skips that wait for tests to be named.
+func (r *Report) NeedsInput() []Skip {
+	var out []Skip
+	for _, s := range r.Run.Skipped {
+		if s.Reason == SkipNeedsInput {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // HasOpen reports whether any finding is still open.

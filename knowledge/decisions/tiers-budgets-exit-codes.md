@@ -22,4 +22,5 @@ generated:
   layer is recorded as skipped with reason "budget", and the report is marked
   `complete: false` ([R8](/rules/r8-time-box-and-report-skips.md)).
 - Exit codes: `0` passed and complete; `1` open findings; `2` config or usage
-  error; `3` incomplete (budget) with no findings.
+  error; `3` incomplete (budget, or a command waits for tests to be named:
+  [named-tests](/decisions/named-tests.md)) with no findings.

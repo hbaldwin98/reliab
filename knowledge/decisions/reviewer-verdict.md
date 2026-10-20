@@ -47,8 +47,10 @@ That is what lets a hook tell the reviewer from the author.
   - A **pass** needs `--worktree`: another worktree of the same repository
     (same git common dir, not the author's checkout), with no changes, whose
     own fresh prepr report has the same tree hash as the author's, is
-    complete like it, ran and skipped the same commands for the same
-    reasons, and has no open finding whose id the author's report lacks.
+    complete like it, named the same tests and mutation tests
+    ([named-tests](/decisions/named-tests.md)), ran and skipped the same
+    commands for the same reasons, and has no open finding whose id the
+    author's report lacks.
     Anything else is refused with the list, and the reviewer records a
     fail instead. Matching tree hashes, with the reviewer's worktree clean
     at HEAD, also show the author's tree was fully committed.

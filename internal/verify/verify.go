@@ -6,6 +6,7 @@ package verify
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -49,6 +50,11 @@ type Options struct {
 	// Scope narrows an on-demand run to these repo-relative paths. It
 	// requires Only.
 	Scope []string
+	// Tests are the test runs named with --tests, one spec each, and
+	// MutationTests the tests mutation runs against. reliab passes both to
+	// commands as given, in any tier (knowledge/decisions/named-tests.md).
+	Tests         []string
+	MutationTests []string
 	// Base, when set, overrides the profile's base for changed_only commands
 	// and {base}.
 	Base string
@@ -115,6 +121,14 @@ func Run(ctx context.Context, opt Options) (*report.Report, string, error) {
 	if len(scope) > 0 && len(opt.Only) == 0 {
 		return nil, "", errors.New("--scope narrows an on-demand run; name its commands with --only")
 	}
+	tests, err := cleanSelection("--tests", opt.Tests)
+	if err != nil {
+		return nil, "", err
+	}
+	mutationTests, err := cleanSelection("--mutation-tests", opt.MutationTests)
+	if err != nil {
+		return nil, "", err
+	}
 	shell, err := FindShell()
 	if err != nil {
 		return nil, "", err
@@ -150,6 +164,8 @@ func Run(ctx context.Context, opt Options) (*report.Report, string, error) {
 			Tier:          reportTier,
 			Only:          opt.Only,
 			Scope:         scope,
+			Tests:         tests,
+			MutationTests: mutationTests,
 			Profile:       prof.Name,
 			StartedAt:     report.Now(start),
 			BudgetSec:     tier.BudgetSeconds,
@@ -192,6 +208,7 @@ func Run(ctx context.Context, opt Options) (*report.Report, string, error) {
 	vars := map[string]string{
 		"{impacted}": impacted, "{cases}": strconv.Itoa(tier.PropertyCases), "{seed}": seed,
 		"{scope}": strings.Join(scope, " "), "{base}": rep.Run.Base,
+		"{tests}": shellWords(tests), "{mutation_tests}": shellWords(mutationTests),
 	}
 	captureDir := ""
 	if opt.Characterize != nil {
@@ -211,6 +228,9 @@ func Run(ctx context.Context, opt Options) (*report.Report, string, error) {
 		"RELIAB_SCOPE="+strings.Join(scope, " "),
 		"RELIAB_CAPTURE_DIR="+captureDir,
 		"RELIAB_BASE="+rep.Run.Base,
+		// Always set, so a value left in the caller's shell never applies.
+		"RELIAB_TESTS="+jsonList(tests),
+		"RELIAB_MUTATION_TESTS="+jsonList(mutationTests),
 	)
 
 	what := "--tier " + tier.Name
@@ -220,8 +240,15 @@ func Run(ctx context.Context, opt Options) (*report.Report, string, error) {
 			what += " --scope " + strings.Join(scope, ",")
 		}
 	}
+	if len(tests) > 0 {
+		what += fmt.Sprintf(" --tests (%d)", len(tests))
+	}
+	if len(mutationTests) > 0 {
+		what += fmt.Sprintf(" --mutation-tests (%d)", len(mutationTests))
+	}
 	fmt.Fprintf(opt.Log, "reliab verify %s (profile %s, budget %s)\n", what, prof.Name, budgetText(tier.BudgetSeconds))
-	buildFailed := false
+	buildFailed, exhausted := false, false
+	named := map[string]bool{profile.NeedTests: len(tests) > 0, profile.NeedMutationTests: len(mutationTests) > 0}
 	for _, id := range tier.Run {
 		cmd, ok := prof.Commands[id]
 		if !ok {
@@ -234,6 +261,14 @@ func Run(ctx context.Context, opt Options) (*report.Report, string, error) {
 			fmt.Fprintf(opt.Log, "  %-17s skipped: not relevant: %s\n", id, notRelevant)
 			continue
 		}
+		// A missing input is not a failure: the run stays incomplete until
+		// the agent names the tests.
+		if missing := unnamed(cmd, named); missing != "" {
+			rep.Run.Complete = false
+			rep.Run.Skipped = append(rep.Run.Skipped, report.Skip{ID: id, Reason: report.SkipNeedsInput, Detail: missing})
+			fmt.Fprintf(opt.Log, "  %-17s incomplete: %s\n", id, missing)
+			continue
+		}
 		// After a failed build every later command would test stale
 		// binaries; the build failure is already a finding.
 		if buildFailed {
@@ -241,13 +276,15 @@ func Run(ctx context.Context, opt Options) (*report.Report, string, error) {
 			fmt.Fprintf(opt.Log, "  %-17s skipped: the build failed\n", id)
 			continue
 		}
-		if !rep.Run.Complete || runCtx.Err() != nil {
+		if exhausted || runCtx.Err() != nil {
+			exhausted = true
 			rep.Run.Complete = false
 			rep.Run.Skipped = append(rep.Run.Skipped, report.Skip{ID: id, Reason: report.SkipBudget})
 			continue
 		}
 		res, findings, killed := runCommand(runCtx, opt, shell, env, reportTier, id, cmd, vars, ch)
 		if killed {
+			exhausted = true
 			rep.Run.Complete = false
 			rep.Run.Skipped = append(rep.Run.Skipped, report.Skip{
 				ID: id, Reason: report.SkipBudget, Detail: fmt.Sprintf("killed after %.1fs", res.ElapsedSec),
@@ -296,10 +333,7 @@ func Run(ctx context.Context, opt Options) (*report.Report, string, error) {
 // runCommand runs one profile command and converts its result. killed is
 // true when the budget deadline stopped it.
 func runCommand(ctx context.Context, opt Options, shell string, env []string, tier, id string, c profile.Command, vars map[string]string, ch *changes) (report.CommandResult, []report.Finding, bool) {
-	line := c.Run
-	for k, v := range vars {
-		line = strings.ReplaceAll(line, k, v)
-	}
+	line := expand(c.Run, vars)
 	logRel := filepath.ToSlash(filepath.Join(OutDir, tier+"-"+id+".log"))
 	logPath := filepath.Join(opt.Root, logRel)
 	res := report.CommandResult{ID: id, Format: c.Format, Output: c.Output, Log: logRel}
@@ -475,6 +509,64 @@ func checkOnly(p *profile.Profile, ids []string) error {
 		return fmt.Errorf("--only %s: the profile defines no such command (it defines %s)", id, strings.Join(defined, ", "))
 	}
 	return nil
+}
+
+// expand substitutes vars in a command line in one pass, so a value that
+// contains a placeholder, such as a named test, is never expanded again.
+func expand(line string, vars map[string]string) string {
+	pairs := make([]string, 0, 2*len(vars))
+	for k, v := range vars {
+		pairs = append(pairs, k, v)
+	}
+	return strings.NewReplacer(pairs...).Replace(line)
+}
+
+// unnamed says which input a command needs and the run lacks, or "".
+func unnamed(c profile.Command, named map[string]bool) string {
+	for _, n := range c.Needs {
+		if named[n] {
+			continue
+		}
+		if n == profile.NeedMutationTests {
+			return "no mutation tests named: re-run with --mutation-tests"
+		}
+		return "no tests named: re-run with --tests"
+	}
+	return ""
+}
+
+// cleanSelection trims named tests and rejects an empty one, which would
+// otherwise read as no selection at all.
+func cleanSelection(flag string, specs []string) ([]string, error) {
+	var out []string
+	for _, s := range specs {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return nil, fmt.Errorf("%s: an empty value names no tests", flag)
+		}
+		out = append(out, s)
+	}
+	return out, nil
+}
+
+// shellWords quotes each item as one POSIX sh word, space-separated: the
+// form {tests} and {mutation_tests} expand to, since commands run under sh.
+func shellWords(items []string) string {
+	words := make([]string, len(items))
+	for i, s := range items {
+		words[i] = "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+	}
+	return strings.Join(words, " ")
+}
+
+// jsonList is items as a JSON array of strings, [] when empty: the form
+// RELIAB_TESTS and RELIAB_MUTATION_TESTS carry.
+func jsonList(items []string) string {
+	if items == nil {
+		items = []string{}
+	}
+	b, _ := json.Marshal(items)
+	return string(b)
 }
 
 // cleanScope returns scope paths relative to root and slash-separated. Each

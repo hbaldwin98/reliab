@@ -82,6 +82,30 @@ func TestVerifyScopeIsRelativeToWorkingDir(t *testing.T) {
 	}
 }
 
+// knowledge/decisions/named-tests.md: --tests is one test run per flag,
+// never comma-split; --mutation-tests is comma-separated or repeated. A run
+// that waits for tests to be named exits 3 and says which command waits.
+func TestVerifyNamedTestsFlags(t *testing.T) {
+	root := testrepo.New(t, "commands:\n  build: \"true\"\n  store_tests:\n    run: \"true\"\n    needs: [tests]\n"+
+		"tiers:\n  inner: { run: [build, store_tests] }\n")
+	t.Chdir(root)
+	code, out, errOut := run("verify")
+	if code != ExitIncomplete || !strings.Contains(errOut, "incomplete: store_tests: no tests named: re-run with --tests") {
+		t.Errorf("no tests named: exit %d, stdout %q, stderr %q", code, out, errOut)
+	}
+	code, out, errOut = run("verify", "--tests", "--where 'a,b'", "--tests", "--test C", "--mutation-tests", "X,Y", "--mutation-tests", "Z")
+	if code != ExitOK {
+		t.Fatalf("tests named: exit %d, stdout %q, stderr %q", code, out, errOut)
+	}
+	rep, err := report.Read(report.LatestPath(root, "inner"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(rep.Run.Tests, "|") != "--where 'a,b'|--test C" || strings.Join(rep.Run.MutationTests, "|") != "X|Y|Z" {
+		t.Errorf("tests %q, mutation tests %q", rep.Run.Tests, rep.Run.MutationTests)
+	}
+}
+
 func TestUnknownCommandIsConfigError(t *testing.T) {
 	if code, _, _ := run("nope"); code != ExitConfig {
 		t.Fatalf("exit code = %d, want %d", code, ExitConfig)

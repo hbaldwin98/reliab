@@ -65,6 +65,21 @@ budget and writes the one report everything else reads.
 4. Re-run the same tier until it exits 0, or until only findings that need a
    human remain.
 
+## Naming the tests that guard the change
+
+`--tests "<spec>"` (repeat it, one test run each) and
+`--mutation-tests <name>,<name>` name the tests that exercise your change, in
+any tier. Each spec is in the profile runner's syntax, which the profile's
+comments document; reliab passes it through as given. Name the tests that
+reach the code you changed, not the narrowest set that passes: the report
+records the selection, and the reviewer checks it against the diff.
+
+A command whose profile `needs: [tests]` (or `mutation_tests`) runs only when
+you name them. Without them the run is incomplete (exit 3), `reliab report
+route` prints `incomplete <command>: no tests named`, and the stop hook and
+push gate wait until a run names them. Re-run the whole tier with the
+selection; a tier run with named tests satisfies both hooks.
+
 ## On demand
 
 `reliab verify --only <command>... [--scope <path>...]` runs just the named
@@ -76,7 +91,8 @@ hook or the push gate; the inner and pre-PR tiers still run as above.
 ## Exit codes
 
 `0` passed and complete, `1` open findings, `2` config error (run
-`reliab doctor`), `3` incomplete because the budget ran out. Report what was
+`reliab doctor`), `3` incomplete because the budget ran out or a command
+needs tests named and none were. Report what was
 skipped and why; `reliab report route` lists budget skips and commands
 skipped as not relevant to the change (the profile's `relevant_when`), with
 what the change touched. A relevance skip is a claim about the change: if

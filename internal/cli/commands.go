@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -91,7 +92,7 @@ func newProfileValidateCmd() *cobra.Command {
 
 func newVerifyCmd() *cobra.Command {
 	var tier, file, seed, base string
-	var only, scope []string
+	var only, scope, tests, mutationTests []string
 	cmd := &cobra.Command{
 		Use:   "verify",
 		Short: "Run the evidence layers for a tier within its budget",
@@ -99,7 +100,10 @@ func newVerifyCmd() *cobra.Command {
 			"With --only it runs just the named commands, under the tier's budget, and writes\n" +
 			".reliab/reports/on-demand-latest.json; --scope narrows {impacted}, {scope}, and RELIAB_SCOPE\n" +
 			"to the given paths. An on-demand report never satisfies the stop or push hooks.\n" +
-			"Exit codes: 0 passed and complete, 1 open findings, 2 config error, 3 incomplete (budget).",
+			"--tests and --mutation-tests name the tests that guard the change, in any tier; they reach\n" +
+			"commands as {tests}, {mutation_tests}, RELIAB_TESTS, and RELIAB_MUTATION_TESTS, and the report\n" +
+			"records them. A command whose profile needs them, run without them, leaves the run incomplete.\n" +
+			"Exit codes: 0 passed and complete, 1 open findings, 2 config error, 3 incomplete (budget, or tests not named).",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			root, err := gitx.Root(".")
@@ -117,6 +121,7 @@ func newVerifyCmd() *cobra.Command {
 			out := cmd.OutOrStdout()
 			rep, path, err := verify.Run(ctx, verify.Options{
 				Root: root, Profile: file, Tier: tier, Seed: seed, Log: out, Only: only, Scope: scope, Base: base,
+				Tests: tests, MutationTests: mutationTests,
 			})
 			if err != nil {
 				return withCode(ExitConfig, err)
@@ -134,11 +139,13 @@ func newVerifyCmd() *cobra.Command {
 			case open > 0:
 				return withCode(ExitFindings, fmt.Errorf("%d open finding(s); run reliab report route", open))
 			case !rep.Run.Complete:
-				return withCode(ExitIncomplete, fmt.Errorf("incomplete: the %s budget ran out", tier))
+				return withCode(ExitIncomplete, fmt.Errorf("incomplete: %s", incompleteWhy(rep, tier)))
 			}
 			return nil
 		},
 	}
+	cmd.Flags().StringArrayVar(&tests, "tests", nil, "one test run for commands with {tests} or RELIAB_TESTS, in the profile runner's syntax (repeat for more runs; never comma-split)")
+	cmd.Flags().StringSliceVar(&mutationTests, "mutation-tests", nil, "tests mutation runs against, for {mutation_tests} or RELIAB_MUTATION_TESTS (repeat or comma-separate)")
 	cmd.Flags().StringVar(&tier, "tier", "inner", "tier to run: inner, prepr, or nightly")
 	cmd.Flags().StringVarP(&file, "file", "f", profile.DefaultPath, "profile, relative to the repo root")
 	cmd.Flags().StringVar(&seed, "seed", "", "seed for property tests (default: derived from the start time)")
@@ -146,6 +153,22 @@ func newVerifyCmd() *cobra.Command {
 	cmd.Flags().StringSliceVar(&scope, "scope", nil, "with --only, narrow the run to these paths (repeat or comma-separate)")
 	cmd.Flags().StringVar(&base, "base", "", "ref for changed_only commands and {base} (default: the profile's base, then origin/HEAD, origin/main, main, master)")
 	return cmd
+}
+
+// incompleteWhy says why a run is incomplete: the commands that wait for
+// tests to be named, and whether the budget ran out.
+func incompleteWhy(rep *report.Report, tier string) string {
+	var why []string
+	for _, s := range rep.NeedsInput() {
+		why = append(why, s.ID+": "+s.Detail)
+	}
+	for _, s := range rep.Run.Skipped {
+		if s.Reason == report.SkipBudget {
+			why = append(why, fmt.Sprintf("the %s budget ran out", tier))
+			break
+		}
+	}
+	return strings.Join(why, "; ")
 }
 
 func newGateCmd() *cobra.Command {

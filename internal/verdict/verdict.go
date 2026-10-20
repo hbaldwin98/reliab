@@ -134,6 +134,14 @@ func Compare(author, rerun *report.Report) []string {
 	if !rerun.Run.Complete {
 		out = append(out, "the re-run is incomplete")
 	}
+	// Named tests decide what ran, so a re-run with another selection does
+	// not back the author's (knowledge/decisions/named-tests.md).
+	if !slices.Equal(author.Run.Tests, rerun.Run.Tests) {
+		out = append(out, fmt.Sprintf("the tests named differ: author %q, re-run %q; re-run with the author's --tests", author.Run.Tests, rerun.Run.Tests))
+	}
+	if !slices.Equal(author.Run.MutationTests, rerun.Run.MutationTests) {
+		out = append(out, fmt.Sprintf("the mutation tests named differ: author %q, re-run %q; re-run with the author's --mutation-tests", author.Run.MutationTests, rerun.Run.MutationTests))
+	}
 	if a, b := ran(author), ran(rerun); !slices.Equal(a, b) {
 		out = append(out, fmt.Sprintf("the commands that ran differ: author %s, re-run %s", strings.Join(a, ","), strings.Join(b, ",")))
 	}

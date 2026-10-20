@@ -44,6 +44,10 @@ layer over an area the change may not touch.
   commands rather than `verify --only`
   ([on-demand-characterization](/decisions/on-demand-characterization.md));
   a fuzz skill follows when S3 exists.
+- **Tests, not paths, are named with `--tests` and `--mutation-tests`**
+  ([named-tests](/decisions/named-tests.md), 2026-10-20), in any tier and
+  without `--only`: a tier run with named tests satisfies the hooks, which
+  an on-demand run never does.
 - The report schema goes to 0.2.0: additive (the new tier value and two
   optional fields), so 0.1.0 reports still validate.
 
