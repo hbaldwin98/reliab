@@ -690,13 +690,15 @@ func decisions(root string) map[string]decided {
 	return out
 }
 
-// newer reports whether timestamp a is after b; on a tie, or one that does
-// not parse, the later record read wins.
+// newer reports whether timestamp a is after b, as moments, whatever their
+// zones; on a tie the later record read wins. A timestamp that does not
+// parse loses to one that does; between two that do not, the later record
+// read wins.
 func newer(a, b string) bool {
 	ta, errA := time.Parse(time.RFC3339, a)
 	tb, errB := time.Parse(time.RFC3339, b)
 	if errA != nil || errB != nil {
-		return a >= b
+		return errA == nil || errB != nil
 	}
 	return !ta.Before(tb)
 }
