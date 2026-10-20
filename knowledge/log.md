@@ -2,6 +2,7 @@
 
 ## 2026-10-20
 * **Update**: [hook-decisions-v0](/decisions/hook-decisions-v0.md): the pre-bash hook denies a numbered redirect (`2>`), `&>`, and `>|` to a protected path or `.reliab/`; it matched only a bare `>` or `>>`, so `go test 2> snapshots/x` passed. Found writing a test for a mutant that survived in the redirect matcher. The guard also has tests for a session in a subdirectory and a directory flag ending the line (`ls -C`). [external-adapters](/decisions/external-adapters.md): gremlins' timeout is 4x, which gave the same survivors and timeouts as 10x on `internal/guard`.
+* **Update**: [finding-classification](/decisions/finding-classification.md): a carried classification or acknowledgement records the report it was made in as `from` (tier and run start), so a reviewer can tell a carried judgement from a fresh one; report 0.10.0 ([schema-v0-shape](/decisions/schema-v0-shape.md)). `integration_tests` depends on no single role, so a role marked not applicable or missing never skips it ([schema-v0-shape](/decisions/schema-v0-shape.md), the onboard skill).
 * **Update**: [external-adapters](/decisions/external-adapters.md): `scripts/mutation.sh changed` has gremlins mutate only lines changed since the base, through `--diff`, run from each package's directory with git printing package-relative, zero-context hunks; gremlins' `--diff` matched nothing in a per-package run. Before, every mutant of a changed package ran and the adapter dropped the unchanged ones; v0.1.2's prepr ran out of budget that way.
 
 ## 2026-10-19

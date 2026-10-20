@@ -30,7 +30,9 @@ format and strictness. Writing the schemas forced field-level choices.
   and `integration_tests` (added 2026-10-19: tests that start the
   application or need a real store or service, run in prepr and nightly;
   a consumer repository had filed them under `store_tests`, which means
-  logic that lives in the store). Tiers, reports, and findings
+  logic that lives in the store). `integration_tests` depends on no single
+  role, so a role marked not applicable or missing never skips it; leave it
+  out of the profile when the repository has no such suite. Tiers, reports, and findings
   all refer to these ids, so a typo is a validation error, not a silently
   skipped layer. `tiers.<tier>.run` (a list of ids) overrides the built-in
   tier mix.
@@ -87,6 +89,10 @@ format and strictness. Writing the schemas forced field-level choices.
   Report 0.9.0 adds a finding's `fingerprint` and `reopened`: a
   command-level finding carries its classification only while its
   fingerprint is the same
+  ([finding-classification](/decisions/finding-classification.md)).
+  Report 0.10.0 adds `from` to a finding's `classification` and
+  `acknowledged`: set only on a carried decision, it names the report the
+  decision was made in, as its tier and run start
   ([finding-classification](/decisions/finding-classification.md)).
   An optional `diff` (`additive-only` or `values-changed`) labels a snapshot or capture
   that no longer matches, in the report (0.3.0) and the findings format

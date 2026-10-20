@@ -94,6 +94,12 @@ findings bookkeeping that would hold the classification is deferred from v0.
   it when it comes back. The fingerprint rule above still holds for
   command-level findings, and `environment` still never carries. Found on a
   consumer repository, where every new run had to be classified again.
+  A carried classification or acknowledgement records the report it was
+  made in as `from` (its tier and run start, e.g.
+  `inner 2026-10-19T12:24:09-07:00`), kept through later carries; one made
+  on the report itself has none (report 0.10.0, added 2026-10-20). The
+  reviewer can then tell a judgement carried from an earlier run from one
+  made on this run.
 - `below-threshold` (added 2026-10-18) is a mutation score short of the
   profile's threshold or a baseline scope's score. verify derives it from
   the counts and the survivors; it is never classified, routes the agent to

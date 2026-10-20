@@ -166,7 +166,9 @@ produced a finding through reliab is not verified.
 Tests too slow for the edit loop because they start the application or
 need a real store or service go in `integration_tests`, which runs in prepr
 and nightly, not inner; keep `store_tests` for logic that lives in the
-store.
+store. `integration_tests` depends on no single role, so a role marked not
+applicable or missing never skips it; leave it out of the profile when the
+repository has no such suite.
 
 T13 (shadow experiments) needs a planned rewrite and production reads; it is
 almost always `applicable: false` at S0.

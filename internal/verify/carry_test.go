@@ -189,3 +189,33 @@ func TestDecisionCarriesAcrossTiersAndAbsentRuns(t *testing.T) {
 	testrepo.Write(t, root, "src/fail", "")
 	check("prepr after a run without it", run(t, Options{Root: root, Tier: "prepr"}))
 }
+
+// A carried decision names the report it was made in, so a reviewer can tell
+// it from a judgement made on this run; a fresh one names none. Asked for on
+// a consumer repository, where every finding of a first prepr arrived
+// classified from inner and on-demand runs.
+func TestCarriedDecisionNamesItsReport(t *testing.T) {
+	root := repo(t, "commands:\n  unit:\n    run: printf '{\"schemaVersion\":\"0.4.0\",\"findings\":[{\"test\":\"pkg.TestA\",\"message\":\"want 1\"}]}' > out.json\n    format: findings\n    output: out.json\ntiers:\n  inner: { run: [unit] }\n  prepr: { run: [unit] }\n")
+	first := run(t, Options{Root: root, Tier: "inner"})
+	id := first.Findings[0].ID
+	if _, err := triage.Classify(root, id, report.KindLegacyDefectOrQuirk, "known", carryAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := triage.Acknowledge(root, id, "human:owner", carryAt); err != nil {
+		t.Fatal(err)
+	}
+	r, err := report.Read(report.LatestPath(root, "inner"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := r.Findings[0]; f.Classification.From != "" || f.Acknowledged.From != "" {
+		t.Errorf("fresh decision names a source: %+v %+v", f.Classification, f.Acknowledged)
+	}
+	want := "inner " + first.Run.StartedAt
+	for i, tier := range []string{"prepr", "prepr"} {
+		f := run(t, Options{Root: root, Tier: tier}).Findings[0]
+		if f.Classification == nil || f.Classification.From != want || f.Acknowledged == nil || f.Acknowledged.From != want {
+			t.Errorf("%s run %d: classification %+v, acknowledged %+v; want from %q", tier, i+1, f.Classification, f.Acknowledged, want)
+		}
+	}
+}

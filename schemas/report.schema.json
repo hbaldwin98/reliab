@@ -189,7 +189,8 @@
           "required": ["reason", "at"],
           "properties": {
             "reason": { "type": "string", "minLength": 1 },
-            "at": { "type": "string", "format": "date-time" }
+            "at": { "type": "string", "format": "date-time" },
+            "from": { "type": "string", "minLength": 1, "description": "Set only when carried: the report the classification was made in, as its tier and run start (e.g. prepr 2026-10-20T08:05:23-07:00)." }
           }
         },
         "acknowledged": {
@@ -198,7 +199,8 @@
           "required": ["by", "at"],
           "properties": {
             "by": { "type": "string", "minLength": 1 },
-            "at": { "type": "string", "format": "date-time" }
+            "at": { "type": "string", "format": "date-time" },
+            "from": { "type": "string", "minLength": 1, "description": "Set only when carried: the report the acknowledgement was made in, as its tier and run start." }
           }
         },
         "fingerprint": { "type": "string", "pattern": "^[0-9a-f]{16}$", "description": "For a finding with no test (the command failed as a whole): a hash of its message and observed output without run-to-run noise. Its classification and acknowledgement carry to the next run only while this is the same." },

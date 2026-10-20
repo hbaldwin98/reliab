@@ -63,9 +63,10 @@ func ResolveTier(p *profile.Profile, name string) (Tier, bool) {
 	return t, true
 }
 
-// commandRole names the tool role each command depends on, so a missing
-// command whose role is marked not applicable is skipped as such rather
-// than as "no command".
+// commandRole names the tool role a command depends on, for those that
+// depend on one (unit only on T1; build, corpus, and integration_tests on
+// none), so a missing command whose role is marked not applicable is
+// skipped as such rather than as "no command".
 var commandRole = map[string]string{
 	"unit":             "T1",
 	"properties":       "T2",

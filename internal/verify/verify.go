@@ -562,8 +562,12 @@ func matchAny(globs []string, path string) bool {
 }
 
 // decided is the newest classification and the newest acknowledgement
-// recorded for one finding id, each in the finding that holds it.
-type decided struct{ classified, acked *report.Finding }
+// recorded for one finding id, each in the finding that holds it, with the
+// report each was read from as its tier and run start.
+type decided struct {
+	classified, acked         *report.Finding
+	classifiedFrom, ackedFrom string
+}
 
 // decisions collects, per finding id, the newest classification and
 // acknowledgement in any tier's latest report or in history. A decision
@@ -578,14 +582,15 @@ func decisions(root string) map[string]decided {
 	}
 	out := map[string]decided{}
 	for _, r := range reports {
+		from := r.Run.Tier + " " + r.Run.StartedAt
 		for i := range r.Findings {
 			f := &r.Findings[i]
 			d := out[f.ID]
 			if f.Classification != nil && (d.classified == nil || newer(f.Classification.At, d.classified.Classification.At)) {
-				d.classified = f
+				d.classified, d.classifiedFrom = f, from
 			}
 			if f.Acknowledged != nil && (d.acked == nil || newer(f.Acknowledged.At, d.acked.Acknowledged.At)) {
-				d.acked = f
+				d.acked, d.ackedFrom = f, from
 			}
 			out[f.ID] = d
 		}
@@ -606,7 +611,9 @@ func newer(a, b string) bool {
 
 // carryForward keeps the agent's classification and any human
 // acknowledgement for findings that are present, matched by their stable
-// id, from the newest decision recorded for each (decisions).
+// id, from the newest decision recorded for each (decisions). A carried
+// decision names the report it was made in (from), kept through later
+// carries, so a reviewer can tell it from one made on this run.
 //
 // A command-level finding (no test: the command failed as a whole) has one
 // id however it failed, so a decision carries only while its fingerprint is
@@ -626,15 +633,23 @@ func carryForward(rep *report.Report, prev map[string]decided, root string) {
 			if why := carryRefused(*c, f, "classified "+c.Kind); why != "" {
 				rep.Findings[i].Reopened = why
 			} else {
+				cl := *c.Classification
+				if cl.From == "" {
+					cl.From = d.classifiedFrom
+				}
 				rep.Findings[i].Kind = c.Kind
-				rep.Findings[i].Classification = c.Classification
+				rep.Findings[i].Classification = &cl
 			}
 		}
 		if a := d.acked; a != nil && a.Kind != report.KindEnvironment {
 			if why := carryRefused(*a, f, "acknowledged by "+a.Acknowledged.By); why != "" {
 				rep.Findings[i].Reopened = why
 			} else {
-				rep.Findings[i].Acknowledged = a.Acknowledged
+				ack := *a.Acknowledged
+				if ack.From == "" {
+					ack.From = d.ackedFrom
+				}
+				rep.Findings[i].Acknowledged = &ack
 				rep.Findings[i].Status = report.StatusAcknowledged
 			}
 		}

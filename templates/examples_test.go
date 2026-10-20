@@ -13,8 +13,9 @@ import (
 // read files outside its own directory.
 const skillExamples = "../plugin/skills/onboard/examples"
 
-// commandRole is the role each command depends on (internal/verify), so an
-// example never wires a command for a role it marks not applicable.
+// commandRole is the role a command depends on, for those that depend on one
+// (internal/verify), so an example never wires a command for a role it marks
+// not applicable.
 var commandRole = map[string]string{
 	"unit": "T1", "properties": "T2", "model_tests": "T2", "snapshots": "T3",
 	"mutation_changed": "T4", "mutation_full": "T4", "api_fuzz": "T7",

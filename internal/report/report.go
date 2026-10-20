@@ -18,7 +18,7 @@ import (
 )
 
 // SchemaVersion is the report schema version this build writes.
-const SchemaVersion = "0.9.0"
+const SchemaVersion = "0.10.0"
 
 // Dir is where reports live, relative to the repo root. Only reliab writes
 // here; see knowledge/decisions/report-storage.md.
@@ -229,11 +229,17 @@ type Finding struct {
 type Classification struct {
 	Reason string `json:"reason"`
 	At     string `json:"at"`
+	// From names the report a carried classification was made in, as its
+	// tier and run start; empty when it was made on this report.
+	From string `json:"from,omitempty"`
 }
 
 type Acknowledged struct {
 	By string `json:"by"`
 	At string `json:"at"`
+	// From names the report a carried acknowledgement was made in, as for
+	// Classification.
+	From string `json:"from,omitempty"`
 }
 
 // Verdict outcomes.
