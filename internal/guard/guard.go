@@ -501,14 +501,15 @@ func outputs(ws []string) []string {
 		if !eq && strings.HasPrefix(low, "-outfile:") {
 			name, val, eq = "-outfile", low[len("-outfile:"):], true
 		}
-		switch {
-		case outputFlags[name] && eq:
+		// An if chain, not a switch: Go coverage does not instrument case
+		// expressions, so gremlins never ran a mutant there.
+		if outputFlags[name] && eq {
 			out = append(out, w[len(w)-len(val):])
-		case outputFlags[name] || short != "" && w == short:
+		} else if outputFlags[name] || short != "" && w == short {
 			if k+1 < len(ws) {
 				out = append(out, ws[k+1])
 			}
-		case short != "" && strings.HasPrefix(w, short):
+		} else if short != "" && strings.HasPrefix(w, short) {
 			out = append(out, w[len(short):])
 		}
 	}

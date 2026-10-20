@@ -216,6 +216,13 @@ func TestPreBashWritesWhereverTheyMayRun(t *testing.T) {
 			cmd  string
 			deny bool
 		}{bash, "rm " + gb + "/snapshots/s.txt", true})
+		// A drive's root holds no repository's file; the hook judges it
+		// rather than failing.
+		tests = append(tests, struct {
+			run  func(string) hookio.Decision
+			cmd  string
+			deny bool
+		}{bash, "cp x /c", false})
 	}
 	for _, tt := range tests {
 		d := tt.run(tt.cmd)
