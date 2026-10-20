@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -257,7 +258,11 @@ var (
 	// redirect matches every output redirect, a numbered (2>) or &> one too
 	// (GNU Bash manual §3.6); >&1 names no file.
 	redirect = regexp.MustCompile(`(^|[^>])>{1,2}\s*([^\s;&|>]+)`)
-	pushCmd  = regexp.MustCompile(`(?i)\bgit\b[^;&|\n]*\bpush\b|\bgh\s+pr\s+create\b`)
+	// fileDup matches >&word where word names a file, not a descriptor.
+	fileDup = regexp.MustCompile(`>&\s*[^\s\d\-;&|<>]`)
+	// outputFlags name a file or directory a command writes.
+	outputFlags = map[string]bool{"--output": true, "--output-file": true, "--output-directory": true, "-outfile": true}
+	pushCmd     = regexp.MustCompile(`(?i)\bgit\b[^;&|\n]*\bpush\b|\bgh\s+pr\s+create\b`)
 	// The binary may be quoted: & "C:\tools\reliab.exe" findings ack.
 	ackCmd     = regexp.MustCompile(`(?i)\breliab(\.exe|\.cmd)?["']?\s+findings\s+ack\b`)
 	approveCmd = regexp.MustCompile(`(?i)\breliab(\.exe|\.cmd)?["']?\s+approve\b`)
@@ -336,21 +341,38 @@ func (r *Repo) protectedWrite(cwd, cmd string, pwsh bool) hookio.Decision {
 	}
 	var targets []target
 	// >| is a redirect that overrides noclobber (GNU Bash manual §3.6.2),
-	// not a pipe; the same length keeps every offset.
-	ps := parts(cwd, strings.ReplaceAll(cmd, ">|", "> "), pwsh)
+	// not a pipe, and >&word one of stdout and stderr to a file unless word
+	// is a number or - (§3.6.4); the same length keeps every offset.
+	cmd = strings.ReplaceAll(cmd, ">|", "> ")
+	cmd = fileDup.ReplaceAllStringFunc(cmd, func(m string) string { return "> " + m[2:] })
+	ps := parts(cwd, cmd, pwsh)
 	for _, p := range ps {
+		dirs := union(p.cwds, p.may)
 		for _, m := range redirect.FindAllStringSubmatch(p.text, -1) {
-			targets = append(targets, target{m[2], p.cwds})
+			targets = append(targets, target{m[2], dirs})
 		}
 		if loc := writeVerb.FindStringIndex(p.text); loc != nil {
 			for _, t := range tokenSep.Split(p.text[loc[1]:], -1) {
-				targets = append(targets, target{t, p.cwds})
+				targets = append(targets, target{t, dirs})
 			}
 		}
+		for _, t := range outputs(words(p.text, pwsh)) {
+			targets = append(targets, target{t, dirs})
+		}
+	}
+	var repoDirs []string
+	paths := func(dir, t string) []string {
+		if dir != anywhere {
+			return r.target(dir, t)
+		}
+		if repoDirs == nil {
+			repoDirs = r.dirs()
+		}
+		return r.fromAnywhere(repoDirs, t)
 	}
 	for _, t := range targets {
 		for _, dir := range t.cwds {
-			for _, rel := range r.target(dir, t.path) {
+			for _, rel := range paths(dir, t.path) {
 				if g, hit := r.isProtected(rel); hit {
 					return hookio.Decision{Deny: protectedReason(rel, g)}
 				}
@@ -366,8 +388,8 @@ func (r *Repo) protectedWrite(cwd, cmd string, pwsh bool) hookio.Decision {
 			continue
 		}
 		for _, t := range tokenSep.Split(p.text[loc[1]:], -1) {
-			for _, dir := range p.cwds {
-				for _, rel := range r.target(dir, t) {
+			for _, dir := range union(p.cwds, p.may) {
+				for _, rel := range paths(dir, t) {
 					if g, hit := r.holdsProtected(rel); hit {
 						return hookio.Decision{Deny: protectedReason(rel, g)}
 					}
@@ -386,6 +408,83 @@ func (r *Repo) target(cwd, t string) []string {
 		return nil
 	}
 	return r.rels(cwd, t)
+}
+
+// fromAnywhere turns one relative command token into the repo-relative
+// paths it may name from a directory the hook cannot know. Its leading ..s
+// reach any directory, so what follows them is judged below each directory
+// of the repository (repoDirs) and each directory above it.
+func (r *Repo) fromAnywhere(repoDirs []string, t string) []string {
+	t = strings.Trim(t, `"'`)
+	if t == "" || strings.HasPrefix(t, "-") || t == "/dev/null" {
+		return nil
+	}
+	p := filepath.FromSlash(strings.ReplaceAll(t, `\`, "/"))
+	sep := string(filepath.Separator)
+	// Absolute, rooted, or on a drive: it names the same file from anywhere
+	// on that drive.
+	if filepath.IsAbs(p) || filepath.VolumeName(p) != "" || strings.HasPrefix(p, sep) {
+		return r.rels(r.Root, p)
+	}
+	p = filepath.Clean(p)
+	for p == ".." || strings.HasPrefix(p, ".."+sep) {
+		p = strings.TrimPrefix(strings.TrimPrefix(p, ".."), sep)
+	}
+	var out []string
+	for _, base := range repoDirs {
+		if rel, ok := gitx.Rel(r.Root, filepath.Join(base, p)); ok {
+			out = append(out, rel)
+		}
+	}
+	return out
+}
+
+// dirs lists the repository's root, every directory holding a file git
+// sees but a protected one, and every directory above the root. A cd into
+// an oracle's directory is no accident, and counting it would deny every
+// relative write after a cd to a variable, such as rm -rf build.
+func (r *Repo) dirs() []string {
+	out := []string{r.Root}
+	for d := r.Root; filepath.Dir(d) != d; {
+		d = filepath.Dir(d)
+		out = append(out, d)
+	}
+	files, _ := gitx.Files(r.Root, nil)
+	seen := map[string]bool{}
+	for _, f := range files {
+		for d := path.Dir(f); d != "." && !seen[d]; d = path.Dir(d) {
+			seen[d] = true
+			if _, hit := r.isProtected(d); !hit {
+				out = append(out, filepath.Join(r.Root, filepath.FromSlash(d)))
+			}
+		}
+	}
+	return out
+}
+
+// outputs returns the files a simple command's options name for output:
+// --output, --output-file, or --output-directory (git diff and log write
+// a patch with --output), PowerShell's -OutFile, and git's -o, as in git
+// format-patch -o <dir>.
+func outputs(ws []string) []string {
+	var out []string
+	git := false
+	for k, w := range ws {
+		low := strings.ToLower(w)
+		if low == "git" || strings.HasSuffix(low, "/git") || strings.HasSuffix(low, "git.exe") {
+			git = true
+		}
+		name, _, eq := strings.Cut(low, "=")
+		if !outputFlags[name] && (!git || name != "-o") {
+			continue
+		}
+		if eq {
+			out = append(out, w[len(name)+1:])
+		} else if k+1 < len(ws) {
+			out = append(out, ws[k+1])
+		}
+	}
+	return out
 }
 
 // PrePush allows a push or PR only when the latest pre-PR report matches

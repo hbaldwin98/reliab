@@ -37,12 +37,15 @@ generated:
      hiding a quote or heredoc, a redirect writing a script, PowerShell's
      `( )` and curly quotes), now tests;
   2. deny commands that write, move, or delete a protected path or `.reliab/`:
-     redirects (`>`, `>>`, numbered as in `2>`, `&>`, and `>|`; until
-     2026-10-20 a numbered or `&` redirect and `>|` were missed) to such a
-     path, or a write verb (`sed -i`, `cp`,
+     redirects (`>`, `>>`, numbered as in `2>`, `&>`, `>&file`, and `>|`;
+     until 2026-10-20 a numbered or `&` redirect, `>&file`, and `>|` were
+     missed) to such a path, a write verb (`sed -i`, `cp`,
      `mv`, `rm`, `tee`, `git checkout|restore`, `Set-Content`,
      `Remove-Item`, and similar) followed by one in the same simple command
-     (the command line split at `;`, `&`, `|`, and newlines). Heuristic and
+     (the command line split at `;`, `&`, `|`, and newlines), or an option
+     naming one for output (`--output`, `--output-file`,
+     `--output-directory`, git's `-o`, PowerShell's `-OutFile`; until
+     2026-10-20 `git diff --output=<path>` wrote any file). Heuristic and
      deliberately conservative: `cp snapshots/x /tmp` is denied too. Until
      2026-10-18 a write verb anywhere in the line made every path-like word
      a target, so an onboarding session had three reads denied, such as
@@ -57,7 +60,18 @@ generated:
      a subshell or brace group, a separator in quotes or after a backslash,
      a comment, a heredoc, `eval` or `source`, an alias or function, a
      PowerShell script, `CDPATH`, a non-ASCII character) judges from the
-     session's directory. Until 2026-10-19 every relative path was judged
+     session's directory. That keeps a write from moving out of the
+     repository; a path is also judged everywhere its command may run,
+     since a `cd` stays in effect past `;`, `||`, and a newline: in each
+     directory any command before it in the chain ran in, and after a `cd`
+     the hook cannot follow (or `popd`, `source`, a line it cannot track
+     that may change directory), from every directory of the repository
+     but an oracle's own and every directory above it. Until 2026-10-20 a
+     line judged only from the session's directory let `cd internal; rm
+     ../reliability-profile.yaml` through. A `cd` through a variable into
+     an oracle's directory followed by a bare name (`cd $D && rm s.txt`) is
+     still allowed: counting it would deny every relative write after such
+     a `cd`. Until 2026-10-19 every relative path was judged
      from the session's directory, so `cd <scratch repo> && git checkout -q
      -- .` was denied, and `cd snapshots && rm s.txt` was not. Since
      2026-10-20 a git write verb counts after git's global options too

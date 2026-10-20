@@ -5,18 +5,26 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 )
 
 // A relative path in a command line counts where its simple command runs,
 // so a write in a scratch repository the line cds into is not a write here.
-// The rule is fail closed: a simple command is judged from the session's
-// directory unless the line surely runs it elsewhere. Surely means a cd the
+// For moving a write out, the rule is fail closed: a simple command is
+// judged from the session's directory unless the line surely runs it
+// elsewhere. Surely means a cd the
 // hook can follow (a literal directory that exists and can be entered),
 // joined by && to the commands it moves, in a chain nothing on the line can
 // reorder or redefine. Any doubt (a variable, cd -, popd, ||, a pipe, a
 // loop, a subshell or brace group, a quote hiding a separator, an alias,
 // eval, a script that may change location) leaves the session's directory.
+//
+// That rule only keeps a write from moving out of the repository. A cd also
+// stays in effect past ;, || and a newline, and one the hook cannot follow
+// may lead anywhere, so cd internal; rm ../x still writes ../x from
+// internal. Each part also carries every directory it may run in, and a
+// write is judged from those too.
 
 // part is one simple command and the directories it may run in: the
 // session's, or after a cd, the directory as the shell names it and as the
@@ -26,7 +34,15 @@ import (
 type part struct {
 	text string
 	cwds []string
+	// may holds every directory the part may run in, whatever the
+	// separators; anywhere among them means a directory the hook cannot
+	// know.
+	may []string
 }
+
+// anywhere stands, in a part's may, for a directory the hook cannot know: a
+// cd to a variable or one that may fail, popd, a script that may cd.
+const anywhere = "\x00anywhere"
 
 var (
 	// cdVerbs move the commands after them to their one argument.
@@ -69,21 +85,22 @@ func parts(session, cmd string, pwsh bool) []part {
 		if k < len(seps) {
 			end = seps[k][0]
 		}
-		out = append(out, part{cmd[start:end], []string{session}})
+		out = append(out, part{text: cmd[start:end], cwds: []string{session}, may: []string{session}})
 		if k < len(seps) {
 			start = seps[k][1]
 		}
 	}
 	if !trackable(cmd) {
-		return withDirFlags(out, session, pwsh)
+		return withDirFlags(unfollowed(out, session, pwsh), session, pwsh)
 	}
 	us := units(cmd, seps)
 	for _, u := range us {
 		ws := words(u.text, pwsh)
 		if v := verb(ws); v >= 0 && (untracked[strings.ToLower(ws[v])] || pwsh && isScript(ws[v])) {
-			return withDirFlags(out, session, pwsh)
+			return withDirFlags(unfollowed(out, session, pwsh), session, pwsh)
 		}
 	}
+	mayRun(out, us, session, pwsh)
 	session1 := []string{session}
 	logical, cwds := session, session1
 	moved, frozen, prevAnd := false, false, true
@@ -124,6 +141,85 @@ func parts(session, cmd string, pwsh bool) []part {
 		prevAnd = kind == "&&"
 	}
 	return withDirFlags(out, session, pwsh)
+}
+
+// unfollowed gives the parts of a line the hook cannot track the session's
+// directory and, when anything on the line may change directory, anywhere.
+func unfollowed(ps []part, session string, pwsh bool) []part {
+	may := []string{session}
+	for _, p := range ps {
+		ws := words(p.text, pwsh)
+		if v := verb(ws); v >= 0 && (cdVerbs[strings.ToLower(ws[v])] || untracked[strings.ToLower(ws[v])] || pwsh && isScript(ws[v]) || movesDir(ws[v:])) {
+			may = append(may, anywhere)
+			break
+		}
+	}
+	for i := range ps {
+		ps[i].may = may
+	}
+	return ps
+}
+
+// mayRun sets each part's may. A cd keeps its directory until another cd,
+// so after ; or || a command runs where any command of the chain before it
+// ran. A cd joined by && moves what follows only if nothing before it may
+// have skipped it; otherwise what follows may run on either side of it. A
+// cd the hook cannot follow, or anything else that may move, leads
+// anywhere for the rest of the line.
+func mayRun(out []part, us []unit, session string, pwsh bool) {
+	cur, logical := []string{session}, []string{session}
+	chain, chainLogical := cur, logical
+	lost, prevAnd := false, true
+	for _, u := range us {
+		may := cur
+		if lost {
+			may = union(cur, []string{anywhere})
+		}
+		for k := u.first; k <= u.last; k++ {
+			out[k].may = may
+		}
+		kind := sepKind(u.sep)
+		ws := words(u.text, pwsh)
+		if v := verb(ws); v >= 0 && cdVerbs[strings.ToLower(ws[v])] {
+			var named, dirs []string
+			followed := true
+			for _, l := range logical {
+				n, p, ok := cdTarget(l, ws[v+1:], pwsh)
+				if !ok {
+					followed = false
+					break
+				}
+				named, dirs = union(named, []string{n}), union(dirs, uniq(n, p))
+			}
+			if !followed {
+				// What follows runs here if the cd failed.
+				lost = true
+			} else if prevAnd && kind == "&&" {
+				cur, logical = dirs, named
+			} else {
+				cur, logical = union(cur, dirs), union(logical, named)
+			}
+		} else if v >= 0 && movesDir(ws[v:]) {
+			lost = true
+		}
+		chain, chainLogical = union(chain, cur), union(chainLogical, logical)
+		if kind == ";" || kind == "||" {
+			cur, logical = chain, chainLogical
+		}
+		// After ; the next command surely runs.
+		prevAnd = kind == "&&" || kind == ";"
+	}
+}
+
+// union returns a's directories, then b's not in a.
+func union(a, b []string) []string {
+	out := append([]string{}, a...)
+	for _, d := range b {
+		if !slices.Contains(out, d) {
+			out = append(out, d)
+		}
+	}
+	return out
 }
 
 // unit is a simple command that commandSep may split at a redirect's &, as
@@ -357,7 +453,7 @@ func uniq(a, b string) []string {
 func withDirFlags(ps []part, session string, pwsh bool) []part {
 	for i, p := range ps {
 		ws := words(p.text, pwsh)
-		var extra []string
+		var extra, mayExtra []string
 		for k, w := range ws {
 			d := ""
 			if dirFlags[w] && k+1 < len(ws) {
@@ -379,9 +475,17 @@ func withDirFlags(ps []part, session string, pwsh bool) []part {
 					extra = append(extra, filepath.Join(c, d))
 				}
 			}
+			for _, c := range p.may {
+				if filepath.IsAbs(d) {
+					mayExtra = append(mayExtra, d)
+				} else if c != anywhere {
+					mayExtra = append(mayExtra, filepath.Join(c, d))
+				}
+			}
 		}
 		if len(extra) > 0 {
 			ps[i].cwds = append(append(append([]string{}, p.cwds...), session), extra...)
+			ps[i].may = union(p.may, mayExtra)
 		}
 	}
 	return ps
