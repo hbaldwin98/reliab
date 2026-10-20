@@ -153,8 +153,8 @@ produced a finding through reliab is not verified.
 | T2 properties | `properties` | `{seed}` and `{cases}` (or `RELIAB_SEED`, `RELIAB_PROPERTY_CASES`) reach the tool; a failing property's seed and shrunk input are in the finding; the same seed reproduces it |
 | T3 snapshots | `snapshots` | a changed snapshot fails the run and becomes a finding labelled `additive-only` or `values-changed`, without the tool accepting it (the label needs an adapter: use reliab's if it ships one for the tool) |
 | T4 mutation | `mutation_changed`, `mutation_full` | on a branch with a change, a survivor on a changed line becomes a finding with file, line, and diff; the report has mutant counts |
-| T5 in-process host | (inside `unit`) | an existing test starts the application in-process; name it |
-| T6 typed client | (inside `unit`) | an existing test calls the application through its own request types; name it |
+| T5 in-process host | (inside `unit` or `integration_tests`) | an existing test starts the application in-process; name it |
+| T6 typed client | (inside `unit` or `integration_tests`) | an existing test calls the application through its own request types; name it |
 | T7 API fuzzing | `api_fuzz` | the fuzzer runs from the API's spec against a local instance; a failure carries a reproducer |
 | T8 network faults | `faults_http` | an injected fault between the application and a store reaches a test |
 | T9 HTTP stubs | `faults_http` | a scripted failure from a stubbed dependency reaches a test |
@@ -162,6 +162,11 @@ produced a finding through reliab is not verified.
 | T11 store tests | `store_tests` | a test runs logic that lives in the store |
 | T12 coverage | `coverage` | a machine-readable report (`cobertura`) that reliab reads |
 | T14 analyzers | `analyzers` | a planted warning fails the run |
+
+Tests too slow for the edit loop because they start the application or
+need a real store or service go in `integration_tests`, which runs in prepr
+and nightly, not inner; keep `store_tests` for logic that lives in the
+store.
 
 T13 (shadow experiments) needs a planned rewrite and production reads; it is
 almost always `applicable: false` at S0.

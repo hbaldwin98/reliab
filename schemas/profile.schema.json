@@ -166,7 +166,7 @@
     },
     "commandId": {
       "enum": [
-        "build", "analyzers", "corpus", "unit", "snapshots", "properties", "spec_checks",
+        "build", "analyzers", "corpus", "unit", "integration_tests", "snapshots", "properties", "spec_checks",
         "model_tests", "api_fuzz", "mutation_changed", "mutation_full", "faults_db",
         "faults_http", "store_tests", "replay_sampled", "replay_full", "coverage",
         "characterize"

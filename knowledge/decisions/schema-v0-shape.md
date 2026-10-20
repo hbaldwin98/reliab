@@ -24,9 +24,13 @@ format and strictness. Writing the schemas forced field-level choices.
   `build`, `analyzers`, `corpus`, `unit`, `snapshots`, `properties`,
   `spec_checks`, `model_tests`, `api_fuzz`, `mutation_changed`,
   `mutation_full`, `faults_db`, `faults_http`, `store_tests`,
-  `replay_sampled`, `replay_full`, `coverage`, and `characterize` (added
+  `replay_sampled`, `replay_full`, `coverage`, `characterize` (added
   2026-10-18, run only by `reliab characterize`:
-  [on-demand-characterization](/decisions/on-demand-characterization.md)). Tiers, reports, and findings
+  [on-demand-characterization](/decisions/on-demand-characterization.md)),
+  and `integration_tests` (added 2026-10-19: tests that start the
+  application or need a real store or service, run in prepr and nightly;
+  a consumer repository had filed them under `store_tests`, which means
+  logic that lives in the store). Tiers, reports, and findings
   all refer to these ids, so a typo is a validation error, not a silently
   skipped layer. `tiers.<tier>.run` (a list of ids) overrides the built-in
   tier mix.

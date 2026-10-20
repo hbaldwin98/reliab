@@ -425,3 +425,16 @@ func TestRoleMissing(t *testing.T) {
 		t.Errorf("--only properties: %v", err)
 	}
 }
+
+// knowledge/decisions/schema-v0-shape.md: integration_tests is a command id
+// of its own, run in prepr and nightly but not in the edit loop.
+func TestIntegrationTestsRunFromPrepr(t *testing.T) {
+	root := repo(t, "commands:\n  integration_tests: echo ran > it.txt\n")
+	for tier, want := range map[string]bool{"inner": false, "prepr": true, "nightly": true} {
+		_ = os.Remove(filepath.Join(root, "it.txt"))
+		verify(t, root, tier)
+		if _, err := os.Stat(filepath.Join(root, "it.txt")); (err == nil) != want {
+			t.Errorf("%s: ran %v, want %v", tier, err == nil, want)
+		}
+	}
+}

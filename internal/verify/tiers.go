@@ -12,7 +12,9 @@ type Tier struct {
 
 // defaults is the paper's Figure 1 as command lists. Cheap commands run in
 // every tier; open-ended ones join at prepr and run fully at night. In the
-// inner tier {impacted} narrows tests to the changed code.
+// inner tier {impacted} narrows tests to the changed code. Integration tests
+// (a host, a real store or service) are too slow for the edit loop, so they
+// join at prepr.
 var defaults = map[string]Tier{
 	"inner": {
 		Name: "inner", BudgetSeconds: 300, PropertyCases: 100,
@@ -21,16 +23,16 @@ var defaults = map[string]Tier{
 	"prepr": {
 		Name: "prepr", BudgetSeconds: 900, PropertyCases: 1000,
 		Run: []string{
-			"build", "analyzers", "corpus", "unit", "snapshots", "properties", "spec_checks",
-			"model_tests", "api_fuzz", "faults_db", "faults_http", "store_tests",
+			"build", "analyzers", "corpus", "unit", "integration_tests", "snapshots", "properties",
+			"spec_checks", "model_tests", "api_fuzz", "faults_db", "faults_http", "store_tests",
 			"mutation_changed", "replay_sampled", "coverage",
 		},
 	},
 	"nightly": {
 		Name: "nightly", BudgetSeconds: 0, PropertyCases: 10000,
 		Run: []string{
-			"build", "analyzers", "corpus", "unit", "snapshots", "properties", "spec_checks",
-			"model_tests", "api_fuzz", "faults_db", "faults_http", "store_tests",
+			"build", "analyzers", "corpus", "unit", "integration_tests", "snapshots", "properties",
+			"spec_checks", "model_tests", "api_fuzz", "faults_db", "faults_http", "store_tests",
 			"mutation_full", "replay_full", "coverage",
 		},
 	},

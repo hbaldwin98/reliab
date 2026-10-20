@@ -98,7 +98,8 @@ Done when:
 Write the profile command the way the contract's first example does: the
 tool, then the adapter with the tool's exit code, `format: findings`, and
 the adapter's file as `output`. Its id is the role's command, which sets
-the tiers it runs in: `unit` (T1), `properties` (T2), `snapshots` (T3),
+the tiers it runs in: `unit` (T1), `integration_tests` (slow tests with a
+host or real services), `properties` (T2), `snapshots` (T3),
 `mutation_changed` or `mutation_full` (T4), `api_fuzz` (T7), `faults_http`
 (T8, T9), `faults_db` (T10), `store_tests` (T11), `coverage` (T12),
 `analyzers` (T14). Fill the role, or add the adapter to its `notes`.
