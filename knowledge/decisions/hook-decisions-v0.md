@@ -59,7 +59,15 @@ generated:
      PowerShell script, `CDPATH`, a non-ASCII character) judges from the
      session's directory. Until 2026-10-19 every relative path was judged
      from the session's directory, so `cd <scratch repo> && git checkout -q
-     -- .` was denied, and `cd snapshots && rm s.txt` was not;
+     -- .` was denied, and `cd snapshots && rm s.txt` was not. Since
+     2026-10-20 a git write verb counts after git's global options too
+     (`git -C <dir> checkout`, `git -c k=v restore`, `--git-dir`,
+     `--no-pager`), with `-C`'s directory a place its paths resolve but
+     never itself an operand; a path is judged both with `..` taken by name
+     and as the kernel resolves it through symlinks, so `link/../x` names
+     where the link leads; and where the file system ignores case (Windows,
+     macOS) a protected glob matches in any case. Before, each of these let
+     a write to a protected path through;
   3. on `git push` or `gh pr create` anywhere in the command, apply the
      [pre-push gate](/decisions/pre-push-v0.md).
 - **stop**: allow when `stop_hook_active` is set. Block when product-class

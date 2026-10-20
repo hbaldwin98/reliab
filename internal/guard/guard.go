@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
@@ -54,12 +55,14 @@ func (r *Repo) protected() []string {
 	return append(append([]string{}, alwaysProtected...), r.Profile.ProtectedPaths...)
 }
 
-// rel turns a path from a tool call into a repo-relative slash path. ok is
-// false for paths outside the repository.
-func (r *Repo) rel(cwd, p string) (string, bool) {
+// rels turns a path from a tool call into the repo-relative slash paths it
+// may name: with .. taken by name, as PowerShell takes it, and as the kernel
+// resolves it through symlinks (physical). It returns none for a path
+// outside the repository.
+func (r *Repo) rels(cwd, p string) []string {
 	p = strings.Trim(p, `"'`)
 	if p == "" {
-		return "", false
+		return nil
 	}
 	// PowerShell commands use backslashes on every OS.
 	p = filepath.FromSlash(strings.ReplaceAll(p, `\`, "/"))
@@ -68,9 +71,53 @@ func (r *Repo) rel(cwd, p string) (string, bool) {
 		if base == "" {
 			base = r.Root
 		}
-		p = filepath.Join(base, p)
+		p = base + string(filepath.Separator) + p
 	}
-	return gitx.Rel(r.Root, p)
+	var out []string
+	if rel, ok := gitx.Rel(r.Root, filepath.Clean(p)); ok {
+		out = append(out, rel)
+	}
+	if rel, ok := gitx.Rel(r.Root, physical(p)); ok && (len(out) == 0 || rel != out[0]) {
+		out = append(out, rel)
+	}
+	return out
+}
+
+// physical resolves p, an absolute path, as the kernel does
+// (path_resolution(7)): each component through symlinks before the next, so
+// a .. after a symlink leaves the directory the link leads to, not the one
+// it is named in. What does not exist yet is joined as named.
+func physical(p string) string {
+	vol := filepath.VolumeName(p)
+	cur := vol + string(filepath.Separator)
+	for _, c := range strings.Split(filepath.ToSlash(p[len(vol):]), "/") {
+		if c == "" || c == "." {
+			continue
+		}
+		if c == ".." {
+			cur = filepath.Dir(cur)
+			continue
+		}
+		cur = filepath.Join(cur, c)
+		if real, err := filepath.EvalSymlinks(cur); err == nil {
+			cur = real
+		}
+	}
+	return cur
+}
+
+// caseless says the file system ignores case by default, as Windows' and
+// macOS's do, so a path spelled in another case names the same file.
+var caseless = runtime.GOOS == "windows" || runtime.GOOS == "darwin"
+
+// match reports whether the repo-relative path matches a protected glob,
+// ignoring case where the file system does.
+func match(glob, rel string) bool {
+	if caseless {
+		glob, rel = strings.ToLower(glob), strings.ToLower(rel)
+	}
+	ok, _ := doublestar.Match(glob, rel)
+	return ok
 }
 
 // isProtected reports whether the repo-relative path is, or is a directory
@@ -82,10 +129,7 @@ func (r *Repo) isProtected(rel string) (string, bool) {
 		return "", false
 	}
 	for _, g := range r.protected() {
-		if ok, _ := doublestar.Match(g, rel); ok {
-			return g, true
-		}
-		if ok, _ := doublestar.Match(g, strings.TrimSuffix(rel, "/")+"/x"); ok {
+		if match(g, rel) || match(g, strings.TrimSuffix(rel, "/")+"/x") {
 			return g, true
 		}
 	}
@@ -100,13 +144,18 @@ func (r *Repo) holdsProtected(rel string) (string, bool) {
 	if fi, err := os.Stat(filepath.Join(r.Root, filepath.FromSlash(dir))); err != nil || !fi.IsDir() {
 		return "", false
 	}
-	files, err := gitx.Files(r.Root, []string{dir})
+	spec := dir
+	if caseless {
+		// git matches a pathspec by case unless told otherwise (gitglossary(7)).
+		spec = ":(icase)" + dir
+	}
+	files, err := gitx.Files(r.Root, []string{spec})
 	if err != nil {
 		return "", false
 	}
 	for _, f := range files {
 		for _, g := range r.protected() {
-			if ok, _ := doublestar.Match(g, f); ok {
+			if match(g, f) {
 				return g, true
 			}
 		}
@@ -116,14 +165,16 @@ func (r *Repo) holdsProtected(rel string) (string, bool) {
 
 // PreEdit denies Edit, Write, and NotebookEdit calls on protected paths (R2).
 func (r *Repo) PreEdit(in hookio.Input) hookio.Decision {
-	rel, ok := r.rel(in.Cwd, in.ToolInput.Path())
-	if !ok {
+	rels := r.rels(in.Cwd, in.ToolInput.Path())
+	if len(rels) == 0 {
 		return hookio.Decision{}
 	}
-	if g, hit := r.isProtected(rel); hit {
-		return hookio.Decision{Deny: protectedReason(rel, g)}
+	for _, rel := range rels {
+		if g, hit := r.isProtected(rel); hit {
+			return hookio.Decision{Deny: protectedReason(rel, g)}
+		}
 	}
-	return r.protectedEdit(rel, in.ToolInput)
+	return r.protectedEdit(rels[0], in.ToolInput)
 }
 
 // protectedEdit denies an edit that adds text matching protected_edits,
@@ -191,11 +242,11 @@ func protectedReason(rel, glob string) string {
 var (
 	// writeVerb matches shell and PowerShell commands that write, move, or
 	// delete files. It is a heuristic; the CI gate is the backstop.
-	writeVerb = regexp.MustCompile(`(?i)(^|[\s;&|(])(sed\s+(-[a-z]*i|--in-place)|perl\s+-[a-z]*i|cp|mv|rm|rmdir|tee|truncate|dd|install|ln|touch|chmod|git\s+(checkout|restore|rm|mv|clean|reset)|set-content|add-content|out-file|remove-item|copy-item|move-item|new-item|rename-item|clear-content)\b`)
+	writeVerb = regexp.MustCompile(`(?i)(^|[\s;&|(])(sed\s+(-[a-z]*i|--in-place)|perl\s+-[a-z]*i|cp|mv|rm|rmdir|tee|truncate|dd|install|ln|touch|chmod|` + gitSub + `(checkout|restore|rm|mv|clean|reset)|set-content|add-content|out-file|remove-item|copy-item|move-item|new-item|rename-item|clear-content)\b`)
 	// dirVerb matches commands that rewrite or remove a whole directory's
 	// files when given one, so a directory holding an oracle is protected
 	// too. Other write verbs only write into a directory they name.
-	dirVerb = regexp.MustCompile(`(?i)(^|[\s;&|(])(rm|rmdir|git\s+(checkout|restore|rm|clean|reset)|remove-item)\b`)
+	dirVerb = regexp.MustCompile(`(?i)(^|[\s;&|(])(rm|rmdir|` + gitSub + `(checkout|restore|rm|clean|reset)|remove-item)\b`)
 	// commandSep splits a command line into simple commands.
 	commandSep = regexp.MustCompile(`[;&|\n]+`)
 	// redirect matches every output redirect, a numbered (2>) or &> one too
@@ -211,6 +262,12 @@ var (
 	// its path.
 	baselineWrite = regexp.MustCompile(`(?i)\breliab(\.exe|\.cmd)?["']?\s+baseline\s+write\b`)
 )
+
+// gitSub matches git and the global options before its subcommand (git(1)
+// SYNOPSIS): -C <path> and -c <name>=<value>, the path options in either
+// spelling, and switches such as --no-pager. -C also moves where relative
+// paths resolve (dirFlags).
+const gitSub = `git(\s+(-c\s+\S+|--(git-dir|work-tree|namespace|exec-path|config-env)(=|\s+)\S+|-{1,2}[a-z][\w-]*))*\s+`
 
 // ReviewerAgent is the plugin's reviewer subagent as hooks see it: the only
 // caller allowed to record a verdict (knowledge/decisions/reviewer-verdict.md).
@@ -288,29 +345,27 @@ func (r *Repo) protectedWrite(cwd, cmd string, pwsh bool) hookio.Decision {
 	}
 	for _, t := range targets {
 		for _, dir := range t.cwds {
-			rel, ok := r.target(dir, t.path)
-			if !ok {
-				continue
-			}
-			if g, hit := r.isProtected(rel); hit {
-				return hookio.Decision{Deny: protectedReason(rel, g)}
+			for _, rel := range r.target(dir, t.path) {
+				if g, hit := r.isProtected(rel); hit {
+					return hookio.Decision{Deny: protectedReason(rel, g)}
+				}
 			}
 		}
 	}
 	// A directory holding an oracle counts only as an argument of a command
-	// that rewrites or removes a whole directory, in its own simple command.
+	// that rewrites or removes a whole directory, in its own simple command,
+	// so not git -C's directory before the subcommand.
 	for _, p := range ps {
-		if !dirVerb.MatchString(p.text) {
+		loc := dirVerb.FindStringIndex(p.text)
+		if loc == nil {
 			continue
 		}
-		for _, t := range tokenSep.Split(p.text, -1) {
+		for _, t := range tokenSep.Split(p.text[loc[1]:], -1) {
 			for _, dir := range p.cwds {
-				rel, ok := r.target(dir, t)
-				if !ok {
-					continue
-				}
-				if g, hit := r.holdsProtected(rel); hit {
-					return hookio.Decision{Deny: protectedReason(rel, g)}
+				for _, rel := range r.target(dir, t) {
+					if g, hit := r.holdsProtected(rel); hit {
+						return hookio.Decision{Deny: protectedReason(rel, g)}
+					}
 				}
 			}
 		}
@@ -318,14 +373,14 @@ func (r *Repo) protectedWrite(cwd, cmd string, pwsh bool) hookio.Decision {
 	return hookio.Decision{}
 }
 
-// target turns one command token into a repo-relative path, skipping
-// options and the null device.
-func (r *Repo) target(cwd, t string) (string, bool) {
+// target turns one command token into the repo-relative paths it may name
+// (rels), skipping options and the null device.
+func (r *Repo) target(cwd, t string) []string {
 	t = strings.Trim(t, `"'`)
 	if t == "" || strings.HasPrefix(t, "-") || t == "/dev/null" {
-		return "", false
+		return nil
 	}
-	return r.rel(cwd, t)
+	return r.rels(cwd, t)
 }
 
 // PrePush allows a push or PR only when the latest pre-PR report matches
