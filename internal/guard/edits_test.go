@@ -12,6 +12,7 @@ import (
 // code: it would rewrite a protected snapshot at runtime, out of sight of
 // every path rule. Text the file already had does not count.
 func TestPreEditProtectedEdits(t *testing.T) {
+	t.Parallel()
 	r := open(t, "protected_paths: [\"**/*.verified.*\"]\nprotected_edits: ['\\bAutoVerify\\b']\ncommands:\n  build: \"true\"\n")
 	testrepo.Write(t, r.Root, "test/Snap.cs", "Verify(x).AutoVerify();\n")
 	edit := func(ti hookio.ToolInput) bool {
@@ -45,6 +46,7 @@ func TestPreEditProtectedEdits(t *testing.T) {
 // A command that rewrites or removes a whole directory is denied when the
 // directory holds a protected file; writing into such a directory is not.
 func TestPreBashDirectoryHoldingOracle(t *testing.T) {
+	t.Parallel()
 	r := open(t, "protected_paths: [\"**/*.verified.*\"]\ncommands:\n  build: \"true\"\n")
 	testrepo.Write(t, r.Root, "test/Snapshots/A.verified.txt", "x")
 	testrepo.Git(t, r.Root, "add", "-A")

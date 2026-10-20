@@ -16,6 +16,7 @@ import (
 // git -C <dir> checkout is the checkout writeVerb names
 // (knowledge/decisions/hook-decisions-v0.md: writes to protected paths).
 func TestPreBashGitGlobalOptions(t *testing.T) {
+	t.Parallel()
 	r := open(t, passing)
 	elsewhere := t.TempDir()
 	root := filepath.ToSlash(r.Root)
@@ -55,6 +56,7 @@ func TestPreBashGitGlobalOptions(t *testing.T) {
 // case is the same file (TestPreBashCdOtherCase; knowledge/decisions/
 // hook-decisions-v0.md: edits and writes to protected paths are denied).
 func TestProtectedPathOtherCase(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS != "windows" {
 		t.Skip("needs a case-insensitive file system")
 	}
@@ -87,6 +89,7 @@ func TestProtectedPathOtherCase(t *testing.T) {
 // leads to, not the one it is named in. A write there lands where the
 // kernel resolves it (TestPreBashCdThroughSymlink does this for a cd).
 func TestProtectedPathThroughSymlink(t *testing.T) {
+	t.Parallel()
 	r := open(t, passing)
 	testrepo.Write(t, r.Root, "snapshots/sub/t.txt", "t")
 	in := filepath.Join(r.Root, "src", "l")

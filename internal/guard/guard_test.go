@@ -37,12 +37,14 @@ func run(t *testing.T, r *Repo, tier string) *report.Report {
 }
 
 func TestOpenOutsideReliabRepo(t *testing.T) {
+	t.Parallel()
 	if _, ok, err := Open(t.TempDir()); ok || err != nil {
 		t.Fatalf("ok=%v err=%v for a plain directory", ok, err)
 	}
 }
 
 func TestPreEdit(t *testing.T) {
+	t.Parallel()
 	r := open(t, passing)
 	tests := []struct {
 		path string
@@ -63,6 +65,7 @@ func TestPreEdit(t *testing.T) {
 }
 
 func TestPreBashProtectedAndAck(t *testing.T) {
+	t.Parallel()
 	r := open(t, passing)
 	tests := []struct {
 		cmd  string
@@ -126,6 +129,7 @@ func push(r *Repo, cmd string) hookio.Decision {
 }
 
 func TestPrePush(t *testing.T) {
+	t.Parallel()
 	r := open(t, passing)
 	if d := push(r, "git push origin main"); !strings.Contains(d.Deny, "no pre-PR report") {
 		t.Fatalf("without a report: %+v", d)
@@ -145,6 +149,7 @@ func TestPrePush(t *testing.T) {
 }
 
 func TestPrePushOpenFindingsAndVerdict(t *testing.T) {
+	t.Parallel()
 	r := open(t, failing)
 	run(t, r, "prepr")
 	if d := r.PrePush(); !strings.Contains(d.Deny, "open finding") {
@@ -159,6 +164,7 @@ func TestPrePushOpenFindingsAndVerdict(t *testing.T) {
 }
 
 func TestStop(t *testing.T) {
+	t.Parallel()
 	r := open(t, passing)
 	if d := r.Stop(hookio.Input{}); d.Block != "" {
 		t.Fatalf("clean repo, no report: %s", d.Block)
@@ -188,6 +194,7 @@ func TestStop(t *testing.T) {
 // An agent that commits its change before stopping leaves a clean working
 // tree; with no report, only the session's starting tree shows the change.
 func TestStopSeesChangesCommittedThisSession(t *testing.T) {
+	t.Parallel()
 	r := open(t, passing)
 	in := hookio.Input{SessionID: "11111111-2222-3333-4444-555555555555"}
 	r.SessionStart(in)
@@ -216,6 +223,7 @@ func TestStopSeesChangesCommittedThisSession(t *testing.T) {
 }
 
 func TestStopOpenFindings(t *testing.T) {
+	t.Parallel()
 	r := open(t, failing)
 	rep := run(t, r, "inner")
 	if d := r.Stop(hookio.Input{}); !strings.Contains(d.Block, "F-analyzers") {
@@ -248,6 +256,7 @@ func TestSessionStart(t *testing.T) {
 // A snapshot tool that approves by command names no protected path, so the
 // profile lists such commands and the hook denies them.
 func TestPreBashProtectedCommands(t *testing.T) {
+	t.Parallel()
 	r := open(t, passing+`protected_commands: ['\bcargo\s+insta\s+(accept|review)\b', '\bINSTA_UPDATE=(always|auto|new|unseen)\b']`+"\n")
 	tests := []struct {
 		cmd  string
@@ -279,6 +288,7 @@ func TestPreBashProtectedCommands(t *testing.T) {
 // a verdict; the author session and any other agent are denied, as with
 // findings ack.
 func TestPreBashVerdictOnlyForReviewer(t *testing.T) {
+	t.Parallel()
 	r := open(t, passing)
 	cmds := []string{
 		"reliab report verdict --outcome pass --by me --notes ok",
@@ -306,6 +316,7 @@ func TestPreBashVerdictOnlyForReviewer(t *testing.T) {
 // The push gate accepts only a passing verdict for the report's own tree; an
 // edit after the review makes the report stale.
 func TestPrePushVerdictBoundToTree(t *testing.T) {
+	t.Parallel()
 	r := open(t, passing+"require_reviewer_verdict: true\n")
 	rep := run(t, r, "prepr")
 	setVerdict := func(outcome, tree string) {

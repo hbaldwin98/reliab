@@ -26,6 +26,7 @@ func runNamed(t *testing.T, r *Repo, tier string, tests ...string) {
 // that needed tests and named none keeps the stop hook asking and the push
 // denied, saying which command waits.
 func TestHooksWaitForNamedTests(t *testing.T) {
+	t.Parallel()
 	r := open(t, needsTests)
 	for _, tier := range []string{"inner", "prepr"} {
 		runNamed(t, r, tier)

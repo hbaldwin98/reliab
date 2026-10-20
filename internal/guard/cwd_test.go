@@ -32,6 +32,7 @@ func scratch(t *testing.T) string {
 }
 
 func TestParts(t *testing.T) {
+	t.Parallel()
 	session, out := scratch(t), scratch(t)
 	// Literal directories named as the shell would expand them: a cd to one
 	// must still not be followed.
@@ -148,6 +149,7 @@ func TestParts(t *testing.T) {
 // A cd resolves logically, as Bash and PowerShell do, and the commands after
 // it are judged both there and where symlinks lead.
 func TestPartsSymlink(t *testing.T) {
+	t.Parallel()
 	session, out := t.TempDir(), scratch(t)
 	link := filepath.Join(t.TempDir(), "link")
 	if err := os.Symlink(filepath.Join(out, "sub"), link); err != nil {
@@ -180,6 +182,7 @@ func TestPartsBareCdSearchPath(t *testing.T) {
 }
 
 func TestPartsCannotEnter(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
 		t.Skip("needs POSIX permissions and a non-root user")
 	}
@@ -195,6 +198,7 @@ func TestPartsCannotEnter(t *testing.T) {
 }
 
 func TestPartsGitBashDrive(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS != "windows" {
 		t.Skip("Git Bash drive paths exist only on Windows")
 	}
@@ -221,6 +225,7 @@ func TestPartsGitBashDrive(t *testing.T) {
 // Windows drive letters are A to Z, in either case (Microsoft Learn,
 // "Naming Files, Paths, and Namespaces").
 func TestIsLetter(t *testing.T) {
+	t.Parallel()
 	for _, c := range []byte("azAZ") {
 		if !isLetter(c) {
 			t.Errorf("isLetter(%q) = false", c)
@@ -236,6 +241,7 @@ func TestIsLetter(t *testing.T) {
 // An open double quote that ends in a backslash is still read, not a crash:
 // a hook that fails lets the command through.
 func TestWordsUnclosedQuoteEndingInBackslash(t *testing.T) {
+	t.Parallel()
 	if got := words(`echo "a\`, false); len(got) != 2 || got[0] != "echo" {
 		t.Errorf("words = %q", got)
 	}
@@ -249,6 +255,7 @@ func TestWordsUnclosedQuoteEndingInBackslash(t *testing.T) {
 // runs under a deadline, and a miss ends the test binary instead of leaving
 // it to spin.
 func TestWordsEscapedBackslashInDoubleQuotes(t *testing.T) {
+	t.Parallel()
 	session, out := t.TempDir(), scratch(t)
 	o := filepath.ToSlash(out)
 	type result struct {
@@ -274,6 +281,7 @@ func TestWordsEscapedBackslashInDoubleQuotes(t *testing.T) {
 }
 
 func TestPartsDirFlags(t *testing.T) {
+	t.Parallel()
 	session, out := t.TempDir(), scratch(t)
 	o := filepath.ToSlash(out)
 	ps := parts(session, "cd "+o+" && env -C "+o+"/sub rm x", false)
@@ -289,6 +297,7 @@ func TestPartsDirFlags(t *testing.T) {
 }
 
 func TestPreBashWhereCommandsRun(t *testing.T) {
+	t.Parallel()
 	r := open(t, passing)
 	out := scratch(t)
 	o := filepath.ToSlash(out)
@@ -390,6 +399,7 @@ func TestPreBashWhereCommandsRun(t *testing.T) {
 // A symlink outside the repository that leads into it: Bash resolves .. in
 // rm's path through the link, so the write lands in the repository.
 func TestPreBashCdThroughSymlink(t *testing.T) {
+	t.Parallel()
 	r := open(t, passing)
 	link := filepath.Join(t.TempDir(), "link")
 	if err := os.Symlink(filepath.Join(r.Root, "src"), link); err != nil {
@@ -420,6 +430,7 @@ func TestPreBashCdThroughSymlink(t *testing.T) {
 // Windows and macOS file systems ignore case, so a cd spelled in another
 // case still lands in the repository.
 func TestPreBashCdOtherCase(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS != "windows" {
 		t.Skip("needs a case-insensitive file system")
 	}
@@ -434,6 +445,7 @@ func TestPreBashCdOtherCase(t *testing.T) {
 // input's cwd names (knowledge/decisions/hook-decisions-v0.md), not the
 // repository root.
 func TestPreBashFromASubdirectory(t *testing.T) {
+	t.Parallel()
 	r := open(t, passing)
 	src := filepath.Join(r.Root, "src")
 	if d := r.PreBash(hookio.Input{ToolName: "Bash", Cwd: src, ToolInput: hookio.ToolInput{Command: "rm -rf ../snapshots"}}); d.Deny == "" {

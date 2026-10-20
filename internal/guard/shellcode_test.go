@@ -13,6 +13,7 @@ import (
 // denied a commit whose heredoc message named the approve command; a review
 // of the first fix found the bypasses listed under "Reviewer's bypasses".
 func TestPreBashPersonOnlyInData(t *testing.T) {
+	t.Parallel()
 	r := open(t, passing)
 	tests := []struct {
 		tool string // the hook's tool_name; empty means Bash
