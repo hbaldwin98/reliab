@@ -2,7 +2,9 @@ package guard
 
 import (
 	"path/filepath"
+	"runtime"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/hbaldwin98/reliab/internal/hookio"
@@ -114,6 +116,48 @@ func TestPreBashWritesWhereverTheyMayRun(t *testing.T) {
 		{bash, "git diff --output=out.patch", false},
 		{bash, "git diff --stat -- snapshots", false},
 		{bash, "grep -o snapshots README.md", false},
+		{bash, "git format-patch -osnapshots HEAD~1", true},
+		{pwsh, `Invoke-WebRequest https://example.com -OutFile:snapshots\s.txt`, true},
+		{bash, "curl -o snapshots/s.txt https://example.com", true},
+		{bash, "sort -o snapshots/s.txt x", true},
+		// git-ls-files(1) -o is --others, git-grep(1) -o --only-matching,
+		// git-commit(1) -o --only: none names an output.
+		{bash, "git ls-files -o snapshots", false},
+		{bash, "git grep -o snapshots src", false},
+		{bash, "git commit -o snapshots/s.txt -m wip", false},
+
+		// A cd in a subshell or substitution moves what follows it there;
+		// in PowerShell a group or script block keeps the location
+		// (about_Operators: grouping operator; about_Script_Blocks).
+		{bash, "(cd src; rm -rf ../snapshots)", true},
+		{bash, "(cd src && rm -rf ../snapshots)", true},
+		{bash, "x=$(cd src; rm -rf ../snapshots)", true},
+		{bash, `echo "$(cd src && rm ../snapshots/s.txt)"`, true},
+		{pwsh, `(cd src); Remove-Item -Recurse ../snapshots`, true},
+		{pwsh, `(sl src); Remove-Item ../snapshots/s.txt`, true},
+		{pwsh, `&{cd src}; Remove-Item ../snapshots/s.txt`, true},
+		{bash, `git commit -m "relocation fix; rm ../snapshots/s.txt"`, false},
+		// Above the root: the repository's own name leads back into it.
+		{bash, "cd $D; rm -rf " + filepath.Base(r.Root) + "/snapshots", true},
+
+		// PowerShell's built-in aliases (about_Aliases; Get-Alias): del,
+		// erase, ri, rd for Remove-Item; copy, cpi; move, mi; sc, ac; ni;
+		// ren, rni; clc.
+		{pwsh, `del snapshots\s.txt`, true},
+		{pwsh, `Set-Location src; del ..\snapshots\s.txt`, true},
+		{pwsh, `ri -Recurse snapshots`, true},
+		{pwsh, `rd snapshots`, true},
+		{pwsh, `copy x snapshots\s.txt`, true},
+		{pwsh, `sc snapshots\s.txt x`, true},
+	}
+	if runtime.GOOS == "windows" {
+		// Git Bash on Windows names drive C: /c (cdTarget reads it so).
+		gb := "/" + strings.ToLower(r.Root[:1]) + filepath.ToSlash(r.Root[2:])
+		tests = append(tests, struct {
+			run  func(string) hookio.Decision
+			cmd  string
+			deny bool
+		}{bash, "rm " + gb + "/snapshots/s.txt", true})
 	}
 	for _, tt := range tests {
 		d := tt.run(tt.cmd)

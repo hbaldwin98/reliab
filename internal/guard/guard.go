@@ -144,22 +144,21 @@ func (r *Repo) isProtected(rel string) (string, bool) {
 
 // holdsProtected reports whether the repo-relative path is a directory that
 // holds a protected file, such as a snapshot directory whose files a glob
-// like **/*.verified.* matches.
-func (r *Repo) holdsProtected(rel string) (string, bool) {
+// like **/*.verified.* matches. files lists the repository's files, as
+// gitx.Files does, so one listing serves every path a command names.
+func (r *Repo) holdsProtected(files []string, rel string) (string, bool) {
 	dir := strings.TrimSuffix(rel, "/")
 	if fi, err := os.Stat(filepath.Join(r.Root, filepath.FromSlash(dir))); err != nil || !fi.IsDir() {
 		return "", false
 	}
-	spec := dir
-	if caseless {
-		// git matches a pathspec by case unless told otherwise (gitglossary(7)).
-		spec = ":(icase)" + dir
-	}
-	files, err := gitx.Files(r.Root, []string{spec})
-	if err != nil {
-		return "", false
+	prefix := dir + "/"
+	if dir == "." || dir == "" {
+		prefix = ""
 	}
 	for _, f := range files {
+		if caseless && !strings.HasPrefix(strings.ToLower(f), strings.ToLower(prefix)) || !caseless && !strings.HasPrefix(f, prefix) {
+			continue
+		}
 		for _, g := range r.protected() {
 			if match(g, f) {
 				return g, true
@@ -247,12 +246,14 @@ func protectedReason(rel, glob string) string {
 
 var (
 	// writeVerb matches shell and PowerShell commands that write, move, or
-	// delete files. It is a heuristic; the CI gate is the backstop.
-	writeVerb = regexp.MustCompile(`(?i)(^|[\s;&|(])(sed\s+(-[a-z]*i|--in-place)|perl\s+-[a-z]*i|cp|mv|rm|rmdir|tee|truncate|dd|install|ln|touch|chmod|` + gitSub + `(checkout|restore|rm|mv|clean|reset)|set-content|add-content|out-file|remove-item|copy-item|move-item|new-item|rename-item|clear-content)\b`)
+	// delete files, with PowerShell's built-in aliases for them (del, ri,
+	// copy, sc, and the rest). It is a heuristic; the CI gate is the
+	// backstop.
+	writeVerb = regexp.MustCompile(`(?i)(^|[\s;&|(])(sed\s+(-[a-z]*i|--in-place)|perl\s+-[a-z]*i|cp|mv|rm|rmdir|tee|truncate|dd|install|ln|touch|chmod|` + gitSub + `(checkout|restore|rm|mv|clean|reset)|set-content|add-content|out-file|remove-item|copy-item|move-item|new-item|rename-item|clear-content|del|erase|ri|rd|copy|cpi|move|mi|sc|ac|ni|ren|rni|clc)\b`)
 	// dirVerb matches commands that rewrite or remove a whole directory's
 	// files when given one, so a directory holding an oracle is protected
 	// too. Other write verbs only write into a directory they name.
-	dirVerb = regexp.MustCompile(`(?i)(^|[\s;&|(])(rm|rmdir|` + gitSub + `(checkout|restore|rm|clean|reset)|remove-item)\b`)
+	dirVerb = regexp.MustCompile(`(?i)(^|[\s;&|(])(rm|rmdir|` + gitSub + `(checkout|restore|rm|clean|reset)|remove-item|del|erase|ri|rd)\b`)
 	// commandSep splits a command line into simple commands.
 	commandSep = regexp.MustCompile(`[;&|\n]+`)
 	// redirect matches every output redirect, a numbered (2>) or &> one too
@@ -262,7 +263,10 @@ var (
 	fileDup = regexp.MustCompile(`>&\s*[^\s\d\-;&|<>]`)
 	// outputFlags name a file or directory a command writes.
 	outputFlags = map[string]bool{"--output": true, "--output-file": true, "--output-directory": true, "-outfile": true}
-	pushCmd     = regexp.MustCompile(`(?i)\bgit\b[^;&|\n]*\bpush\b|\bgh\s+pr\s+create\b`)
+	// shortOutputs are commands whose short option names the file they
+	// write. git's -o names one only in format-patch, which sets it.
+	shortOutputs = map[string]string{"curl": "-o", "sort": "-o", "go": "-o", "wget": "-O"}
+	pushCmd      = regexp.MustCompile(`(?i)\bgit\b[^;&|\n]*\bpush\b|\bgh\s+pr\s+create\b`)
 	// The binary may be quoted: & "C:\tools\reliab.exe" findings ack.
 	ackCmd     = regexp.MustCompile(`(?i)\breliab(\.exe|\.cmd)?["']?\s+findings\s+ack\b`)
 	approveCmd = regexp.MustCompile(`(?i)\breliab(\.exe|\.cmd)?["']?\s+approve\b`)
@@ -360,13 +364,21 @@ func (r *Repo) protectedWrite(cwd, cmd string, pwsh bool) hookio.Decision {
 			targets = append(targets, target{t, dirs})
 		}
 	}
-	var repoDirs []string
+	var files, repoDirs []string
+	listed := false
+	list := func() []string {
+		if !listed {
+			files, _ = gitx.Files(r.Root, nil)
+			listed = true
+		}
+		return files
+	}
 	paths := func(dir, t string) []string {
 		if dir != anywhere {
 			return r.target(dir, t)
 		}
 		if repoDirs == nil {
-			repoDirs = r.dirs()
+			repoDirs = r.dirs(list())
 		}
 		return r.fromAnywhere(repoDirs, t)
 	}
@@ -390,7 +402,7 @@ func (r *Repo) protectedWrite(cwd, cmd string, pwsh bool) hookio.Decision {
 		for _, t := range tokenSep.Split(p.text[loc[1]:], -1) {
 			for _, dir := range union(p.cwds, p.may) {
 				for _, rel := range paths(dir, t) {
-					if g, hit := r.holdsProtected(rel); hit {
+					if g, hit := r.holdsProtected(list(), rel); hit {
 						return hookio.Decision{Deny: protectedReason(rel, g)}
 					}
 				}
@@ -407,7 +419,12 @@ func (r *Repo) target(cwd, t string) []string {
 	if t == "" || strings.HasPrefix(t, "-") || t == "/dev/null" {
 		return nil
 	}
-	return r.rels(cwd, t)
+	out := r.rels(cwd, t)
+	// Git Bash on Windows names drive C: /c, as cdTarget reads it.
+	if runtime.GOOS == "windows" && len(t) >= 2 && t[0] == '/' && isLetter(t[1]) && (len(t) == 2 || t[2] == '/') {
+		out = append(out, r.rels(cwd, t[1:2]+":/"+t[min(3, len(t)):])...)
+	}
+	return out
 }
 
 // fromAnywhere turns one relative command token into the repo-relative
@@ -439,17 +456,17 @@ func (r *Repo) fromAnywhere(repoDirs []string, t string) []string {
 	return out
 }
 
-// dirs lists the repository's root, every directory holding a file git
-// sees but a protected one, and every directory above the root. A cd into
-// an oracle's directory is no accident, and counting it would deny every
-// relative write after a cd to a variable, such as rm -rf build.
-func (r *Repo) dirs() []string {
+// dirs lists the repository's root, every directory holding one of its
+// files (gitx.Files) but a protected one, and every directory above the
+// root. A cd into an oracle's directory is no accident, and counting it
+// would deny every relative write after a cd to a variable, such as rm -rf
+// build.
+func (r *Repo) dirs(files []string) []string {
 	out := []string{r.Root}
 	for d := r.Root; filepath.Dir(d) != d; {
 		d = filepath.Dir(d)
 		out = append(out, d)
 	}
-	files, _ := gitx.Files(r.Root, nil)
 	seen := map[string]bool{}
 	for _, f := range files {
 		for d := path.Dir(f); d != "." && !seen[d]; d = path.Dir(d) {
@@ -464,24 +481,34 @@ func (r *Repo) dirs() []string {
 
 // outputs returns the files a simple command's options name for output:
 // --output, --output-file, or --output-directory (git diff and log write
-// a patch with --output), PowerShell's -OutFile, and git's -o, as in git
-// format-patch -o <dir>.
+// a patch with --output), PowerShell's -OutFile (also -OutFile:<path>),
+// and the short option of a command that writes there (shortOutputs):
+// git format-patch -o <dir>, curl -o, sort -o, go build -o, wget -O, with
+// the value attached or not.
 func outputs(ws []string) []string {
 	var out []string
-	git := false
+	short := ""
 	for k, w := range ws {
 		low := strings.ToLower(w)
-		if low == "git" || strings.HasSuffix(low, "/git") || strings.HasSuffix(low, "git.exe") {
-			git = true
+		if o, ok := shortOutputs[strings.TrimSuffix(path.Base(strings.ReplaceAll(low, `\`, "/")), ".exe")]; ok && short == "" {
+			short = o
 		}
-		name, _, eq := strings.Cut(low, "=")
-		if !outputFlags[name] && (!git || name != "-o") {
-			continue
+		if low == "format-patch" {
+			short = "-o"
 		}
-		if eq {
-			out = append(out, w[len(name)+1:])
-		} else if k+1 < len(ws) {
-			out = append(out, ws[k+1])
+		name, val, eq := strings.Cut(low, "=")
+		if !eq && strings.HasPrefix(low, "-outfile:") {
+			name, val, eq = "-outfile", low[len("-outfile:"):], true
+		}
+		switch {
+		case outputFlags[name] && eq:
+			out = append(out, w[len(w)-len(val):])
+		case outputFlags[name] || short != "" && w == short:
+			if k+1 < len(ws) {
+				out = append(out, ws[k+1])
+			}
+		case short != "" && len(w) > len(short) && strings.HasPrefix(w, short):
+			out = append(out, w[len(short):])
 		}
 	}
 	return out

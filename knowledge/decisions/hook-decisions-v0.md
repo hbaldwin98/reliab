@@ -41,11 +41,17 @@ generated:
      until 2026-10-20 a numbered or `&` redirect, `>&file`, and `>|` were
      missed) to such a path, a write verb (`sed -i`, `cp`,
      `mv`, `rm`, `tee`, `git checkout|restore`, `Set-Content`,
-     `Remove-Item`, and similar) followed by one in the same simple command
+     `Remove-Item`, PowerShell's aliases for them such as `del`, `ri`,
+     `copy`, and `sc`, and similar; until 2026-10-20 the aliases were
+     missed) followed by one in the same simple command
      (the command line split at `;`, `&`, `|`, and newlines), or an option
      naming one for output (`--output`, `--output-file`,
-     `--output-directory`, git's `-o`, PowerShell's `-OutFile`; until
-     2026-10-20 `git diff --output=<path>` wrote any file). Heuristic and
+     `--output-directory`, `-OutFile` or `-OutFile:<path>`, and `-o` for
+     `git format-patch`, `curl`, `sort`, and `go`, `-O` for `wget`, the
+     value attached or not; until 2026-10-20 `git diff --output=<path>`
+     wrote any file; git's abbreviated long options such as `--outp` are
+     not read). A Git Bash path on a drive (`/c/...`) is judged as that
+     drive's path too. Heuristic and
      deliberately conservative: `cp snapshots/x /tmp` is denied too. Until
      2026-10-18 a write verb anywhere in the line made every path-like word
      a target, so an onboarding session had three reads denied, such as
@@ -64,9 +70,11 @@ generated:
      repository; a path is also judged everywhere its command may run,
      since a `cd` stays in effect past `;`, `||`, and a newline: in each
      directory any command before it in the chain ran in, and after a `cd`
-     the hook cannot follow (or `popd`, `source`, a line it cannot track
-     that may change directory), from every directory of the repository
-     but an oracle's own and every directory above it. Until 2026-10-20 a
+     the hook cannot follow (or `popd`, `source`, or a line it cannot track
+     with a directory change anywhere in it, even inside `(`, `$(`, `{`, or
+     a backtick: a PowerShell group or script block keeps the location),
+     from every directory holding a file git sees but an oracle's own and
+     every directory above the root. Until 2026-10-20 a
      line judged only from the session's directory let `cd internal; rm
      ../reliability-profile.yaml` through. A `cd` through a variable into
      an oracle's directory followed by a bare name (`cd $D && rm s.txt`) is

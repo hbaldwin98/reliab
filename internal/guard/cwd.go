@@ -70,6 +70,10 @@ var (
 	// make --directory.
 	dirFlags = map[string]bool{"-C": true, "--directory": true, "--chdir": true, "--work-tree": true}
 	assign   = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
+	// cdWord finds a command that changes directory anywhere in a line the
+	// hook cannot track: after a separator, ( or $( (a PowerShell group
+	// keeps the location), { or &{, a backtick, or an assignment's =.
+	cdWord = regexp.MustCompile("(?i)(^|[\\s;&|({`=])(cd|chdir|pushd|popd|sl|set-location|push-location|pop-location)($|[\\s;&|)}`.\\\\/'\"])")
 )
 
 // parts splits cmd at ;, &, |, and newlines, as commandSep does, and gives
@@ -149,7 +153,8 @@ func unfollowed(ps []part, session string, pwsh bool) []part {
 	may := []string{session}
 	for _, p := range ps {
 		ws := words(p.text, pwsh)
-		if v := verb(ws); v >= 0 && (cdVerbs[strings.ToLower(ws[v])] || untracked[strings.ToLower(ws[v])] || pwsh && isScript(ws[v]) || movesDir(ws[v:])) {
+		v := verb(ws)
+		if cdWord.MatchString(p.text) || v >= 0 && (untracked[strings.ToLower(ws[v])] || pwsh && isScript(ws[v]) || strings.HasPrefix(ws[v], "$")) {
 			may = append(may, anywhere)
 			break
 		}
