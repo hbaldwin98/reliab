@@ -190,11 +190,20 @@ format, never by tool (paper P7), and a one-tool format breaks that.
   backslash paths and looks mutants up by slash paths, so from the module
   root every mutant is "not covered" and none is tested
   (go-gremlins/gremlins#222). Inside one package the paths match.
-  `scripts/mutation.sh changed` runs it on each changed package and the
-  adapter does the changed-line filtering `--diff` would have done, through
-  `reliab changed-lines`. Before
+  `scripts/mutation.sh changed` runs it on each changed package. Before
   this, reliab's own T4 passed while testing nothing; S0 missed it because
   the diff on `main` is empty.
+- **gremlins mutates only changed lines (`--diff`).** Its `--diff` keys
+  changed lines by `git diff`'s repository-relative paths and looks mutants
+  up by package-relative ones, so in a per-package run it skipped every
+  mutant. `scripts/mutation.sh changed` runs gremlins from the package
+  directory with no path argument, and has git print paths relative to it
+  (`diff.relative`) in zero-context hunks (`diff.context=0`: gremlins takes a
+  hunk's added lines as one contiguous range). A package holding an
+  untracked Go file is mutated whole, since `git diff` omits it. The adapter
+  still filters through `reliab changed-lines`. Without it, a release's
+  prepr mutated 1,134 mutants across 11 packages to keep the changed ones,
+  and ran out of its 900-second budget at about 630.
 - **gremlins runs with two workers and a 10x timeout.** With its default of
   one worker per CPU, tests run so slowly under the load that gremlins
   times them out, and a timed-out mutant counts as killed (the

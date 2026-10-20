@@ -31,15 +31,28 @@ in_scope() {
 
 out=.reliab/out/gremlins
 rm -rf "$out" && mkdir -p "$out" || exit 1
+top=$(git rev-parse --show-toplevel) || exit 1
 set --
 for dir in $(for f in $files; do in_scope "$f" && dirname "$f"; done | sort -u); do
   [ -d "$dir" ] || continue
   report="$out/$(printf '%s' "$dir" | tr / _).json"
+  # In changed mode gremlins mutates only lines changed since BASE (--diff).
+  # It matches git diff's paths, relative to the repository, against paths
+  # relative to the package, so it runs from the package directory with no
+  # path argument, and git prints paths relative to there (diff.relative);
+  # gremlins takes each hunk's added lines as contiguous, so hunks carry no
+  # context (diff.context=0). git diff omits untracked files, so a package
+  # holding one is mutated whole; the adapter filters either way.
+  diff=
+  if [ "$mode" = changed ] && [ -z "$(git ls-files --others --exclude-standard -- "$dir/*.go")" ]; then
+    diff="-D $base"
+  fi
   # Two workers and a 10x timeout: with gremlins' default (one worker per
   # CPU) tests time out under the load and a mutant reads as killed
   # (knowledge/decisions/external-adapters.md). Never --test-cpu: with it
   # every mutant reads as killed.
-  gremlins unleash "./$dir" --workers 2 --timeout-coefficient 10 -o "$report" || exit 1
+  # shellcheck disable=SC2086 # diff is empty or two words
+  (cd "$dir" && GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=diff.relative GIT_CONFIG_VALUE_0=true     GIT_CONFIG_KEY_1=diff.context GIT_CONFIG_VALUE_1=0     gremlins unleash $diff --workers 2 --timeout-coefficient 10 -o "$top/$report") || exit 1
   # A package with no mutants (only an embed, say) writes no report.
   [ -f "$report" ] || continue
   set -- "$@" "$dir=$report"
