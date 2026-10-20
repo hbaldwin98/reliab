@@ -108,7 +108,12 @@ func physical(p string) string {
 
 // caseless says the file system ignores case by default, as Windows' and
 // macOS's do, so a path spelled in another case names the same file.
-var caseless = runtime.GOOS == "windows" || runtime.GOOS == "darwin"
+var caseless = caselessOS(runtime.GOOS)
+
+// caselessOS is caseless for an operating system. A function, not the
+// variable's initializer: Go coverage does not instrument package-level
+// initializers, so gremlins never ran a mutant there.
+func caselessOS(goos string) bool { return goos == "windows" || goos == "darwin" }
 
 // match reports whether the repo-relative path matches a protected glob,
 // ignoring case where the file system does.

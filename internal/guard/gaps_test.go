@@ -123,3 +123,15 @@ func TestProtectedPathThroughSymlink(t *testing.T) {
 		}
 	}
 }
+
+// NTFS on Windows and APFS as macOS formats it by default ignore case
+// (Microsoft, "Case sensitivity"; Apple, "File system formats available in
+// Disk Utility"); Linux file systems do not.
+func TestCaselessOS(t *testing.T) {
+	t.Parallel()
+	for goos, want := range map[string]bool{"windows": true, "darwin": true, "linux": false, "freebsd": false} {
+		if got := caselessOS(goos); got != want {
+			t.Errorf("caselessOS(%q) = %v, want %v", goos, got, want)
+		}
+	}
+}
