@@ -1,6 +1,7 @@
 package guard
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -59,6 +60,27 @@ func TestPartsMayRun(t *testing.T) {
 				break
 			}
 		}
+	}
+}
+
+// GNU Bash manual §3.5.2 Tilde Expansion: a tilde expands only where it
+// begins a word, and PowerShell's ~ only as a path's first character, so a
+// cd into a Windows short name such as C:\Users\RUNNER~1 is followed, as
+// any literal directory is (knowledge/decisions/hook-decisions-v0.md).
+func TestPartsTildeInsideAName(t *testing.T) {
+	t.Parallel()
+	session, out := scratch(t), scratch(t)
+	dir := filepath.Join(out, "a~1")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ps := parts(session, "cd "+filepath.ToSlash(dir)+" && rm x", false)
+	if got := ps[1].cwds[0]; got != dir {
+		t.Errorf("cd into a~1: runs in %q, want %q", got, dir)
+	}
+	ps = parts(session, "cd ~1 && rm x", false)
+	if got := ps[1].cwds; len(got) != 1 || got[0] != session {
+		t.Errorf("cd ~1: runs in %q, want the session's", got)
 	}
 }
 

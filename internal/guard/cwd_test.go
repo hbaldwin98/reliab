@@ -22,7 +22,13 @@ import (
 // and one whose name has a space.
 func scratch(t *testing.T) string {
 	t.Helper()
-	dir := t.TempDir()
+	// Resolved, so a cd into it has one directory both as named and as
+	// symlinks lead: macOS's temporary directory is under /var, a link to
+	// /private/var.
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, d := range []string{"sub", "with space"} {
 		if err := os.MkdirAll(filepath.Join(dir, d), 0o755); err != nil {
 			t.Fatal(err)

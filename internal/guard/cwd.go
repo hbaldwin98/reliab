@@ -407,7 +407,10 @@ func cdTarget(logical string, args []string, pwsh bool) (string, string, bool) {
 		dir = a
 		n++
 	}
-	if n != 1 || dir == "" || strings.ContainsAny(dir, "$~*?[%<>|&;") {
+	// A tilde expands only where it begins a word (GNU Bash manual §3.5.2;
+	// PowerShell's ~ is a path's first character), so a Windows short name
+	// such as RUNNER~1 is literal.
+	if n != 1 || dir == "" || strings.ContainsAny(dir, "$*?[%<>|&;") || strings.HasPrefix(dir, "~") {
 		return "", "", false
 	}
 	if pwsh {
