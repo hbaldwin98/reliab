@@ -47,12 +47,14 @@ for dir in $(for f in $files; do in_scope "$f" && dirname "$f"; done | sort -u);
   if [ "$mode" = changed ] && [ -z "$(git ls-files --others --exclude-standard -- "$dir/*.go")" ]; then
     diff="-D $base"
   fi
-  # Two workers and a 10x timeout: with gremlins' default (one worker per
+  # Two workers and a 4x timeout: with gremlins' default (one worker per
   # CPU) tests time out under the load and a mutant reads as killed
   # (knowledge/decisions/external-adapters.md). Never --test-cpu: with it
   # every mutant reads as killed.
   # shellcheck disable=SC2086 # diff is empty or two words
-  (cd "$dir" && GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=diff.relative GIT_CONFIG_VALUE_0=true     GIT_CONFIG_KEY_1=diff.context GIT_CONFIG_VALUE_1=0     gremlins unleash $diff --workers 2 --timeout-coefficient 10 -o "$top/$report") || exit 1
+  (cd "$dir" && GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=diff.relative GIT_CONFIG_VALUE_0=true \
+    GIT_CONFIG_KEY_1=diff.context GIT_CONFIG_VALUE_1=0 \
+    gremlins unleash $diff --workers 2 --timeout-coefficient 4 -o "$top/$report") || exit 1
   # A package with no mutants (only an embed, say) writes no report.
   [ -f "$report" ] || continue
   set -- "$@" "$dir=$report"

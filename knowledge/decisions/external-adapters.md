@@ -204,7 +204,7 @@ format, never by tool (paper P7), and a one-tool format breaks that.
   still filters through `reliab changed-lines`. Without it, a release's
   prepr mutated 1,134 mutants across 11 packages to keep the changed ones,
   and ran out of its 900-second budget at about 630.
-- **gremlins runs with two workers and a 10x timeout.** With its default of
+- **gremlins runs with two workers and a 4x timeout.** With its default of
   one worker per CPU, tests run so slowly under the load that gremlins
   times them out, and a timed-out mutant counts as killed (the
   mutation-testing-elements convention, kept). On a 16-CPU Windows machine
@@ -213,7 +213,10 @@ format, never by tool (paper P7), and a one-tool format breaks that.
   survivors and 1 timeout, matching mutants applied by hand (14). So a
   score measured under load is too high, and survivors appear and vanish
   between runs. `--test-cpu` makes every mutant read as killed, so it is
-  never passed. Two workers take about twice as long as the default.
+  never passed. Two workers take about twice as long as the default. The
+  timeout is 4x since 2026-10-20: on `internal/guard`, 4x and 10x gave the
+  same 8 survivors and 14 timeouts, and each timeout (a mutated loop that
+  never ends) waits that multiple of the package's test time.
 - **Go coverage does not instrument `case` expressions,** so gremlins reports
   a mutant in one as not covered even when tests would kill it. Keep
   conditions in case bodies rather than case expressions in code gremlins
