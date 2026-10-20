@@ -63,6 +63,12 @@ commands:
     output: .reliab/out/mutation.json
   coverage: go test -coverprofile=.reliab/out/cover.out ./...
 
+tiers:
+  prepr:
+    # internal/guard's tests take seconds and gremlins runs them once per
+    # mutant; a large guard change needs more than the default 900s.
+    budget_seconds: 1800
+
 impacted:
   all: ./...
   map:
