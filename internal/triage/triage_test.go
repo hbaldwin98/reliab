@@ -563,7 +563,20 @@ func TestClassifyAFindingOnlyTheFirstRunSaw(t *testing.T) {
 // for a human (requirement-silent), not a legacy quirk; route says so for
 // those commands, and equivalent-mutant stays for mutants only.
 func TestRequirementSilentForGeneratedInputs(t *testing.T) {
-	for _, id := range generatedCommands {
+	requirementSilentFor(t, generatedCommands, "the source the property cites")
+}
+
+// knowledge/decisions/finding-classification.md: a fault test's failure,
+// where nothing states what should happen under the injected fault, is a
+// question for a human too. Found onboarding a repository whose fault
+// findings could only be filed as legacy quirks.
+func TestRequirementSilentForFaults(t *testing.T) {
+	requirementSilentFor(t, faultCommands, "the same injected fault")
+}
+
+func requirementSilentFor(t *testing.T, ids []string, advice string) {
+	t.Helper()
+	for _, id := range ids {
 		root := testrepo.New(t, "commands:\n  "+id+":\n    run: cp test/p.xml .reliab/out/p.xml; exit 1\n    format: junit\n    output: .reliab/out/p.xml\ntiers:\n  prepr: { run: ["+id+"] }\n")
 		testrepo.Write(t, root, "test/p.xml", `<testsuite><testcase name="TestOrderQuantity"><failure>quantity 0 accepted</failure></testcase></testsuite>`)
 		if _, _, err := verify.Run(context.Background(), verify.Options{Root: root, Profile: "reliability-profile.yaml", Tier: "prepr"}); err != nil {
@@ -572,7 +585,7 @@ func TestRequirementSilentForGeneratedInputs(t *testing.T) {
 		f := finding(t, root, "prepr")
 		var buf bytes.Buffer
 		if _, err := Route(&buf, root); err != nil || !strings.Contains(buf.String(), "reliab findings classify "+f.ID+" --kind requirement-silent") ||
-			!strings.Contains(buf.String(), "the source the property cites") {
+			!strings.Contains(buf.String(), advice) {
 			t.Errorf("%s: route = %q, %v", id, buf.String(), err)
 		}
 		if _, err := Classify(root, f.ID, report.KindEquivalentMutant, "r", time.Now()); err == nil {

@@ -22,7 +22,7 @@ sources:
 | legacy-defect-or-quirk | human | Findings queue; a human decides |
 | characterization-diff | human | Stop; a human approves or reverts |
 | equivalent-mutant | human | Stop; a human confirms, then acknowledges or excludes it (reliab-specific; see below) |
-| requirement-silent | human | Stop; a human says whether the mutated or generated-input behavior is intended (reliab-specific; see below) |
+| requirement-silent | human | Stop; a human says whether the mutated, generated-input, or under-fault behavior is intended (reliab-specific; see below) |
 | environment | human | Stop; a human fixes the machine, then re-runs (reliab-specific; see below) |
 | below-threshold | human, after its survivors | Handle its survivors; then stop, a human accepts the score or says what to test (reliab-specific; see below) |
 
@@ -39,7 +39,9 @@ and only findings from `mutation_*` commands can take it.
 `requirement-silent` is reliab's name for the paper's other mutation
 outcome: "if the requirement is silent, ask." A surviving mutant whose
 behavior nothing states is a question for a human, not a test to write. A property or fuzz failure on an input the cited source says nothing
-about is the same question, so those commands' findings can take it too.
+about is the same question, and so is a fault test's failure where nothing
+states what should happen under the injected fault, so those commands'
+findings can take it too.
 
 `environment` covers a failure the machine caused, not the code: resource
 exhaustion, network, a service the tests need. The paper treats such noise

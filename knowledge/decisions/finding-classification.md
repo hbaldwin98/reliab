@@ -50,8 +50,13 @@ findings bookkeeping that would hold the classification is deferred from v0.
   where such a finding could only be filed `legacy-defect-or-quirk`, whose
   question ("keep this pre-existing behavior?") is wrong for behavior new on
   the branch. `reliab report route` gives those commands' unclassified
-  findings advice that names the choice. It stays a human kind;
-  `equivalent-mutant` stays mutation-only.
+  findings advice that names the choice. Since 2026-10-19 so can findings
+  from the fault commands (`faults_db`, `faults_http`): what the system
+  should do when a store or a dependency fails is often stated nowhere, and
+  a fault test may have assumed a side. Found on a consumer repository,
+  where such findings were filed `legacy-defect-or-quirk` with the
+  question in the reason. It stays a human kind; `equivalent-mutant` stays
+  mutation-only.
 - `environment` (added 2026-10-18) is for a failure the machine caused,
   not the code: out of consoles, memory, or disk, the network, a service
   the tests need. The agent may use it only after re-running the failing

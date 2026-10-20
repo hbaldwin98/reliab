@@ -55,8 +55,8 @@ func Classify(root, id, kind, reason string, now time.Time) ([]string, error) {
 		if kind == report.KindEquivalentMutant && !isMutation(*f) {
 			return fmt.Errorf("%s comes from %s, not a mutation command; only a surviving mutant can be %s", f.ID, f.Command, kind)
 		}
-		if kind == report.KindRequirementSilent && !isMutation(*f) && !isGenerated(*f) {
-			return fmt.Errorf("%s comes from %s: not a mutation command, nor a property or fuzz command; only their findings can be %s", f.ID, f.Command, kind)
+		if kind == report.KindRequirementSilent && !isMutation(*f) && !isGenerated(*f) && !isFault(*f) {
+			return fmt.Errorf("%s comes from %s: not a mutation command, nor a property, fuzz, or fault command; only their findings can be %s", f.ID, f.Command, kind)
 		}
 		f.Kind = kind
 		f.Classification = &report.Classification{Reason: reason, At: report.Now(now)}
@@ -238,6 +238,11 @@ const (
 // it, and behavior new on the branch is not a legacy quirk.
 const generatedAction = "reproduce it from its seed or saved input and shrink it, then compare it with the source the property cites. The code breaks what the source states: fix it (new-code-defect), or, if the behavior predates the change, reliab findings classify %[1]s --kind legacy-defect-or-quirk. The property or generator is wrong: harness-defect or wrong-property. The source says nothing about this input (no limit stated, say): do not pick a side; reliab findings classify %[1]s --kind requirement-silent --reason \"<the question>\""
 
+// faultAction replaces the unclassified action for a fault-injection
+// failure: what the system should do when a store or a dependency fails is
+// often stated nowhere, so the test may assume a side.
+const faultAction = "reproduce it with the same injected fault, then compare the behavior with what a source states for that failure (a ticket, a doc, a rule, a caller that depends on it). The code breaks what the source states: fix it (new-code-defect), or, if the behavior predates the change, reliab findings classify %[1]s --kind legacy-defect-or-quirk. The test or its fault is wrong: harness-defect. Nothing states what should happen under this fault: do not pick a side; reliab findings classify %[1]s --kind requirement-silent --reason \"<the question>\""
+
 const commandAction = "the command failed before reporting a result; read the message and its log. A build or test-code error: fix it and re-run (new-code-defect or harness-defect). The tool or machine failed: re-run once, then reliab findings classify %s --kind environment --reason \"<the machine's error>\""
 
 // snapshotAction replaces the unclassified action for a text snapshot or
@@ -256,6 +261,12 @@ func isMutation(f report.Finding) bool { return strings.HasPrefix(f.Command, "mu
 var generatedCommands = []string{"properties", "model_tests", "api_fuzz"}
 
 func isGenerated(f report.Finding) bool { return contains(generatedCommands, f.Command) }
+
+// faultCommands inject a store or dependency failure: what should happen
+// then is often stated nowhere.
+var faultCommands = []string{"faults_db", "faults_http"}
+
+func isFault(f report.Finding) bool { return contains(faultCommands, f.Command) }
 
 // Route writes what to do next for each open finding in the most recent
 // latest report, and returns how many open findings it listed.
@@ -282,6 +293,9 @@ func Route(w io.Writer, root string) (int, error) {
 		}
 		if f.Kind == report.KindUnclassified && isGenerated(f) {
 			action = generatedAction
+		}
+		if f.Kind == report.KindUnclassified && isFault(f) {
+			action = faultAction
 		}
 		if f.Kind == report.KindUnclassified && f.Test == "" {
 			action = commandAction
