@@ -35,7 +35,11 @@ set --
 for dir in $(for f in $files; do in_scope "$f" && dirname "$f"; done | sort -u); do
   [ -d "$dir" ] || continue
   report="$out/$(printf '%s' "$dir" | tr / _).json"
-  gremlins unleash "./$dir" -o "$report" || exit 1
+  # Two workers and a 10x timeout: with gremlins' default (one worker per
+  # CPU) tests time out under the load and a mutant reads as killed
+  # (knowledge/decisions/external-adapters.md). Never --test-cpu: with it
+  # every mutant reads as killed.
+  gremlins unleash "./$dir" --workers 2 --timeout-coefficient 10 -o "$report" || exit 1
   # A package with no mutants (only an embed, say) writes no report.
   [ -f "$report" ] || continue
   set -- "$@" "$dir=$report"

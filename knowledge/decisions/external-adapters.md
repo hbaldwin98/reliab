@@ -195,6 +195,16 @@ format, never by tool (paper P7), and a one-tool format breaks that.
   `reliab changed-lines`. Before
   this, reliab's own T4 passed while testing nothing; S0 missed it because
   the diff on `main` is empty.
+- **gremlins runs with two workers and a 10x timeout.** With its default of
+  one worker per CPU, tests run so slowly under the load that gremlins
+  times them out, and a timed-out mutant counts as killed (the
+  mutation-testing-elements convention, kept). On a 16-CPU Windows machine
+  all 68 mutants of `internal/setup` timed out; four workers and a 10x
+  timeout still timed out 10 and showed 4 survivors; two workers showed 13
+  survivors and 1 timeout, matching mutants applied by hand (14). So a
+  score measured under load is too high, and survivors appear and vanish
+  between runs. `--test-cpu` makes every mutant read as killed, so it is
+  never passed. Two workers take about twice as long as the default.
 - **Go coverage does not instrument `case` expressions,** so gremlins reports
   a mutant in one as not covered even when tests would kill it. Keep
   conditions in case bodies rather than case expressions in code gremlins
