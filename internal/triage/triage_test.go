@@ -621,4 +621,17 @@ func TestRouteNamedTestsAndNeedsInput(t *testing.T) {
 	if strings.Contains(buf.String(), "incomplete mutation_changed") {
 		t.Errorf("route lists a command whose tests were named:\n%s", buf.String())
 	}
+
+	// It prints only what the run named.
+	opt.Tests, opt.MutationTests = []string{"--test A"}, nil
+	if _, _, err := verify.Run(context.Background(), opt); err != nil {
+		t.Fatal(err)
+	}
+	buf.Reset()
+	if _, err := Route(&buf, root); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "\ntests named: --test A\n") || strings.Contains(buf.String(), "\nmutation tests named:") {
+		t.Errorf("tests named, mutation tests not:\n%s", buf.String())
+	}
 }

@@ -76,3 +76,22 @@ func TestHistory(t *testing.T) {
 		t.Fatalf("history = %v, want %v (oldest first, unreadable skipped)", got, want)
 	}
 }
+
+// knowledge/decisions/named-tests.md: the hooks and verify's exit wait on
+// the skips with reason needs-input, and only those.
+func TestNeedsInput(t *testing.T) {
+	r := minimal("inner", "2026-10-20T10:00:00Z")
+	if got := r.NeedsInput(); len(got) != 0 {
+		t.Errorf("no skips: %+v", got)
+	}
+	r.Run.Skipped = []Skip{
+		{ID: "build", Reason: SkipBudget},
+		{ID: "store_tests", Reason: SkipNeedsInput, Detail: "no tests named: re-run with --tests"},
+		{ID: "faults_db", Reason: SkipNotRelevant},
+		{ID: "mutation_changed", Reason: SkipNeedsInput, Detail: "no mutation tests named: re-run with --mutation-tests"},
+	}
+	got := r.NeedsInput()
+	if len(got) != 2 || got[0].ID != "store_tests" || got[1].ID != "mutation_changed" {
+		t.Errorf("NeedsInput = %+v", got)
+	}
+}

@@ -375,4 +375,17 @@ func TestNamedTestsAndNeedsInput(t *testing.T) {
 	if err := json.Unmarshal(buf.Bytes(), &got); err != nil || len(got.Tests) != 2 {
 		t.Errorf("json tests = %q (%v)", got.Tests, err)
 	}
+
+	// knowledge/decisions/pr-evidence-summary.md: the summary states only
+	// what the report says, so a run that named nothing lists no selection.
+	opt.Tests, opt.MutationTests = nil, []string{"Ns.A"}
+	if _, _, err := verify.Run(context.Background(), opt); err != nil {
+		t.Fatal(err)
+	}
+	if s, err = Build(Options{Root: root, Tier: "prepr", Base: "main"}); err != nil {
+		t.Fatal(err)
+	}
+	if md := Markdown(s); strings.Contains(md, "- Tests named") || !strings.Contains(md, "- Mutation tests named (`--mutation-tests`): `Ns.A`.") {
+		t.Errorf("mutation tests named, tests not:\n%s", md)
+	}
 }

@@ -93,6 +93,12 @@ func TestVerifyNamedTestsFlags(t *testing.T) {
 	if code != ExitIncomplete || !strings.Contains(errOut, "incomplete: store_tests: no tests named: re-run with --tests") {
 		t.Errorf("no tests named: exit %d, stdout %q, stderr %q", code, out, errOut)
 	}
+	// The run waits for tests, not the budget, and says only that
+	// (knowledge/decisions/named-tests.md: "verify exits 3 and names the
+	// waiting commands").
+	if strings.Contains(errOut, "budget") {
+		t.Errorf("no tests named, budget not exhausted: stderr %q", errOut)
+	}
 	code, out, errOut = run("verify", "--tests", "--where 'a,b'", "--tests", "--test C", "--mutation-tests", "X,Y", "--mutation-tests", "Z")
 	if code != ExitOK {
 		t.Fatalf("tests named: exit %d, stdout %q, stderr %q", code, out, errOut)
