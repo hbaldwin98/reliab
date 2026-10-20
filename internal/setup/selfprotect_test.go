@@ -48,6 +48,29 @@ func TestInitAddsSelfProtectionToAnExistingProfile(t *testing.T) {
 	}
 }
 
+// The same Decision at the file's end: a block list that ends the file, and
+// a last line with no newline, keep every line as it was.
+func TestInitAddsSelfProtectionAtTheEndOfTheFile(t *testing.T) {
+	for name, tc := range map[string]struct{ before, want string }{
+		"block list last": {"commands:\n  build: \"true\"\nprotected_paths:\n  - snapshots/**\n",
+			"commands:\n  build: \"true\"\nprotected_paths:\n  - snapshots/**\n  - reliability-profile.yaml\n"},
+		"no final newline": {"commands:\n  build: \"true\"",
+			"commands:\n  build: \"true\"\n"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := testrepo.New(t, tc.before)
+			_, p, err := Init(root, Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			after := read(t, root, profile.DefaultPath)
+			if !profile.Protects(p, profile.DefaultPath) || !strings.Contains(after, tc.want) {
+				t.Errorf("protected %v, profile:\n%s", p.ProtectedPaths, after)
+			}
+		})
+	}
+}
+
 // A glob that already covers the profile is enough; init leaves it.
 func TestInitKeepsACoveringGlob(t *testing.T) {
 	root := testrepo.New(t, "protected_paths: [\"*.yaml\"]\ncommands:\n  build: \"true\"\n")
