@@ -47,13 +47,15 @@ func Mutation(root string, p *profile.Profile, tier string) ([]MutationLine, err
 		ids = rep.Run.Only
 	}
 	var out []MutationLine
-	switch {
-	case rep.FreshFor(tree):
-	case tree == rep.Run.TreeHash:
-		// Back on the start tree: the tree moved while the commands ran.
-		out = append(out, MutationLine{Text: fmt.Sprintf("the %s report is stale: the tree changed while it ran (from %s to %s), so some commands saw an edit; re-run reliab verify --tier %s", tier, rep.Run.TreeHash, rep.Run.TreeHashEnd, tier), Fail: true})
-	default:
-		out = append(out, MutationLine{Text: fmt.Sprintf("the %s report is stale: it ran on tree %s and the tree is now %s; re-run reliab verify --tier %s", tier, rep.Run.TreeHash, tree, tier), Fail: true})
+	// Conditions stay out of case expressions, which Go coverage does not
+	// instrument (knowledge/decisions/external-adapters.md).
+	if !rep.FreshFor(tree) {
+		if tree == rep.Run.TreeHash {
+			// Back on the start tree: the tree moved while the commands ran.
+			out = append(out, MutationLine{Text: fmt.Sprintf("the %s report is stale: the tree changed while it ran (from %s to %s), so some commands saw an edit; re-run reliab verify --tier %s", tier, rep.Run.TreeHash, rep.Run.TreeHashEnd, tier), Fail: true})
+		} else {
+			out = append(out, MutationLine{Text: fmt.Sprintf("the %s report is stale: it ran on tree %s and the tree is now %s; re-run reliab verify --tier %s", tier, rep.Run.TreeHash, tree, tier), Fail: true})
+		}
 	}
 	for _, id := range ids {
 		cmd, ok := p.Commands[id]
