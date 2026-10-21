@@ -235,7 +235,7 @@ func Build(opt Options) (*Summary, error) {
 		if s.CurrentTree, err = gitx.TreeHash(opt.Root, prof.TreeExclude()); err != nil {
 			s.FreshError = err.Error()
 		}
-		s.Fresh = err == nil && s.CurrentTree == r.Run.TreeHash
+		s.Fresh = err == nil && r.FreshFor(s.CurrentTree)
 		s.NotInTier = notInTier(prof, r)
 		profileBase = prof.Base
 	}
@@ -398,6 +398,8 @@ func Markdown(s *Summary) string {
 	// gremlins would call their mutants not covered.
 	if s.FreshError != "" {
 		p("> **Freshness unknown:** %s\n\n", oneLine(s.FreshError))
+	} else if !s.Fresh && s.CurrentTree == s.TreeHash {
+		p("> **Stale:** the working tree changed while this report ran, so it describes no tree. Re-run `reliab verify --tier %s` before relying on it.\n\n", s.Tier)
 	} else if !s.Fresh {
 		p("> **Stale:** the working tree changed after this report ran. It describes tree `%s`; the tree is now `%s`. Re-run `reliab verify --tier %s` before relying on it.\n\n",
 			short(s.TreeHash), short(s.CurrentTree), s.Tier)

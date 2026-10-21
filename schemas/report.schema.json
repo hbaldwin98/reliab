@@ -34,6 +34,7 @@
         "budgetSec": { "type": "integer", "minimum": 0, "description": "0 means no budget." },
         "complete": { "type": "boolean", "description": "False when the budget ran out before every command ran, or a command needed tests named and none were (skip reason needs-input)." },
         "treeHash": { "$ref": "#/$defs/treeHash", "description": "Working-tree hash the run saw." },
+        "treeHashEnd": { "$ref": "#/$defs/treeHash", "description": "Working-tree hash when the run ended, present only when it differs from treeHash: the tree changed while the run ran, so the report is stale for every tree (knowledge/decisions/report-freshness.md)." },
         "head": { "type": "string", "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$", "description": "The HEAD commit when the run started, absent in a repository with no commits. Ties history reports to a branch (knowledge/decisions/pr-evidence-summary.md)." },
         "seed": { "type": "string" },
         "base": { "type": "string", "description": "The base ref changed-code commands were measured against, or relevance was judged against, when either happened." },

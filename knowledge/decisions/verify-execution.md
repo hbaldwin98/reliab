@@ -27,7 +27,9 @@ generated:
   `{tests}` and `{mutation_tests}` expand to the tests named with
   `--tests` and `--mutation-tests`, one single-quoted sh word each, and
   `RELIAB_TESTS` and `RELIAB_MUTATION_TESTS` carry them as JSON arrays,
-  always set ([named-tests](/decisions/named-tests.md)). Substitution is
+  always set ([named-tests](/decisions/named-tests.md)). A heavy run
+  also exports `RELIAB_HEAVY_LOCK`, the pid holding the machine's
+  heavy-run lock ([heavy-run-lock](/decisions/heavy-run-lock.md)). Substitution is
   one pass, so a value is never expanded again.
   `{impacted}` narrows only in the inner tier, or to an on-demand run's
   scope ([impacted-tests-map](/decisions/impacted-tests-map.md),

@@ -187,8 +187,8 @@ func fresh(root string, r *report.Report) error {
 	if err != nil {
 		return err
 	}
-	if h != r.Run.TreeHash {
-		return errors.New("stale: the tree changed after it ran; re-run reliab verify --tier prepr")
+	if !r.FreshFor(h) {
+		return errors.New("stale: the tree changed while or after it ran; re-run reliab verify --tier prepr")
 	}
 	return nil
 }

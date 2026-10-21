@@ -254,3 +254,22 @@ func readFile(t *testing.T, root, name string) string {
 	}
 	return string(b)
 }
+
+// report-freshness.md: a tree that changed while the run ran leaves a stale
+// report even once the edit is undone. The gate then says the tree changed
+// during the run, rather than naming the same tree twice as if it moved.
+func TestGateStaleWhenTheTreeChangedDuringTheRun(t *testing.T) {
+	root := testrepo.New(t, strings.Replace(held, "run: cp test/m.json .reliab/out/m.json", "run: cp test/m.json .reliab/out/m.json && echo mid > src/a/mid.txt", 1))
+	counts(t, root, 9, 1)
+	rep := prepr(t, root)
+	if err := os.Remove(filepath.Join(root, "src/a/mid.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if rep.Run.TreeHashEnd == "" {
+		t.Fatalf("the run did not record the tree changing: %+v", rep.Run)
+	}
+	lines := gateLines(t, root, "prepr")
+	if !failed(lines) || !strings.Contains(lines[0].Text, "changed while it ran") || strings.Count(lines[0].Text, rep.Run.TreeHash) > 1 {
+		t.Errorf("gate = %+v, want it to say the tree changed while the report ran", lines)
+	}
+}

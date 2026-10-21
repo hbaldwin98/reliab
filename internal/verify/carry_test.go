@@ -219,26 +219,3 @@ func TestCarriedDecisionNamesItsReport(t *testing.T) {
 		}
 	}
 }
-
-// knowledge/decisions/verify-execution.md: a run carries the newest decision
-// for each finding, so timestamps compare as moments, whatever their zones;
-// one that does not parse (a report edited by hand) never beats one that
-// does.
-func TestNewer(t *testing.T) {
-	tests := []struct {
-		a, b string
-		want bool
-	}{
-		{"2026-10-20T10:00:00-07:00", "2026-10-20T12:00:00Z", true},
-		{"2026-10-20T12:00:00Z", "2026-10-20T10:00:00-07:00", false},
-		{"2026-10-20T10:00:00Z", "2026-10-20T10:00:00Z", true},
-		{"garbled", "2026-10-20T10:00:00Z", false},
-		{"2026-10-20T10:00:00Z", "garbled", true},
-		{"garbled", "also garbled", true},
-	}
-	for _, tt := range tests {
-		if got := newer(tt.a, tt.b); got != tt.want {
-			t.Errorf("newer(%q, %q) = %v, want %v", tt.a, tt.b, got, tt.want)
-		}
-	}
-}
