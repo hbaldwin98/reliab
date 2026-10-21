@@ -265,6 +265,13 @@ type Verdict struct {
 	RerunStartedAt string `json:"rerunStartedAt,omitempty"`
 }
 
+// VerdictCurrent reports whether r carries a verdict recorded on r's own
+// tree. A verdict is bound to the tree it re-ran, so any other tree voids it
+// (knowledge/decisions/reviewer-verdict.md).
+func (r *Report) VerdictCurrent() bool {
+	return r.Verdict != nil && r.Verdict.TreeHash == r.Run.TreeHash
+}
+
 // NeedsInput returns the skips that wait for tests to be named.
 func (r *Report) NeedsInput() []Skip {
 	var out []Skip

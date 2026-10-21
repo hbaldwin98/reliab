@@ -210,7 +210,7 @@ func Build(opt Options) (*Summary, error) {
 	if s.Skipped == nil {
 		s.Skipped = []report.Skip{}
 	}
-	s.VerdictCurrent = r.Verdict != nil && r.Verdict.TreeHash == r.Run.TreeHash
+	s.VerdictCurrent = r.VerdictCurrent()
 
 	profileBase := ""
 	prof, err := profile.Load(filepath.Join(opt.Root, profile.DefaultPath))

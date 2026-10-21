@@ -95,3 +95,21 @@ func TestNeedsInput(t *testing.T) {
 		t.Errorf("NeedsInput = %+v", got)
 	}
 }
+
+// knowledge/decisions/reviewer-verdict.md: the verdict records the author's
+// report tree, and only a verdict for that tree counts; a report with no
+// verdict has none current.
+func TestVerdictCurrent(t *testing.T) {
+	r := minimal("prepr", "2026-10-18T10:00:00Z")
+	if r.VerdictCurrent() {
+		t.Error("no verdict counted as current")
+	}
+	r.Verdict = &Verdict{Outcome: VerdictPass, By: "reliab:reviewer", TreeHash: r.Run.TreeHash}
+	if !r.VerdictCurrent() {
+		t.Error("a verdict on the report's tree is not current")
+	}
+	r.Verdict.TreeHash = "fedcba9876543210fedcba9876543210fedcba98"
+	if r.VerdictCurrent() {
+		t.Error("a verdict on another tree counted as current")
+	}
+}
