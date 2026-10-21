@@ -18,7 +18,7 @@ import (
 )
 
 // SchemaVersion is the report schema version this build writes.
-const SchemaVersion = "0.11.0"
+const SchemaVersion = "0.12.0"
 
 // Dir is where reports live, relative to the repo root. Only reliab writes
 // here; see knowledge/decisions/report-storage.md.
@@ -73,7 +73,8 @@ type Run struct {
 	Scope         []string        `json:"scope,omitempty"`
 	Tests         []string        `json:"tests,omitempty"`         // verify --tests, as given
 	MutationTests []string        `json:"mutationTests,omitempty"` // verify --mutation-tests, as given
-	Profile       string          `json:"profile"`
+	Profile       string          `json:"profile"`                 // the profile's name
+	ProfilePath   string          `json:"profilePath,omitempty"`   // the file verify loaded; see ProfileFile
 	StartedAt     string          `json:"startedAt"`
 	ElapsedSec    float64         `json:"elapsedSec"`
 	BudgetSec     int             `json:"budgetSec"`
@@ -263,6 +264,23 @@ type Verdict struct {
 	TreeHash       string `json:"treeHash,omitempty"`
 	Head           string `json:"head,omitempty"`
 	RerunStartedAt string `json:"rerunStartedAt,omitempty"`
+}
+
+// ProfileFile returns the path under root of the profile r's run loaded,
+// or of fallback for a report that does not record one. Commands that judge
+// a report against its thresholds, tiers, and freshness excludes read this
+// profile, so a run with verify -f is judged by the file it ran with.
+// Protection does not: protected paths and approvals always come from the
+// default profile (knowledge/decisions/protected-path-approval.md).
+func (r *Report) ProfileFile(root, fallback string) string {
+	p := fallback
+	if r.Run.ProfilePath != "" {
+		p = filepath.FromSlash(r.Run.ProfilePath)
+	}
+	if filepath.IsAbs(p) {
+		return p
+	}
+	return filepath.Join(root, p)
 }
 
 // VerdictCurrent reports whether r carries a verdict recorded on r's own

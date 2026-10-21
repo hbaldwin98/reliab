@@ -113,3 +113,26 @@ func TestVerdictCurrent(t *testing.T) {
 		t.Error("a verdict on another tree counted as current")
 	}
 }
+
+// knowledge/decisions/schema-v0-shape.md (report 0.12.0): a report names
+// the profile file its run loaded, relative to the repo root unless
+// outside it; a report written before then is read with the default.
+func TestProfileFile(t *testing.T) {
+	root := t.TempDir()
+	r := minimal("prepr", "2026-10-18T10:00:00Z")
+	if got, want := r.ProfileFile(root, "reliability-profile.yaml"), filepath.Join(root, "reliability-profile.yaml"); got != want {
+		t.Errorf("no profilePath: %q, want %q", got, want)
+	}
+	r.Run.ProfilePath = "ci/alt.yaml"
+	if got, want := r.ProfileFile(root, "reliability-profile.yaml"), filepath.Join(root, "ci", "alt.yaml"); got != want {
+		t.Errorf("relative: %q, want %q", got, want)
+	}
+	abs := filepath.Join(t.TempDir(), "alt.yaml")
+	r.Run.ProfilePath = filepath.ToSlash(abs)
+	if got := r.ProfileFile(root, "reliability-profile.yaml"); got != abs {
+		t.Errorf("absolute: %q, want %q", got, abs)
+	}
+	if err := r.Validate(); err != nil {
+		t.Errorf("schema: %v", err)
+	}
+}
