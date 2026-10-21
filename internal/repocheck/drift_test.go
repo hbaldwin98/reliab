@@ -92,7 +92,7 @@ func TestProjectHookScriptsExist(t *testing.T) {
 		}
 	}
 	readJSON(t, ".claude/settings.json", &s)
-	re := regexp.MustCompile(`^sh "\$CLAUDE_PROJECT_DIR/(\.claude/hooks/[\w.-]+\.sh)"$`)
+	re := regexp.MustCompile(`^(?:sh|awk -f) "\$CLAUDE_PROJECT_DIR/(\.claude/hooks/[\w.-]+\.(?:sh|awk))"$`)
 	n := 0
 	for event, groups := range s.Hooks {
 		for _, g := range groups {

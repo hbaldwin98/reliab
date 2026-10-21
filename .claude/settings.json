@@ -22,7 +22,7 @@
     "PreToolUse": [
       {
         "matcher": "Bash|PowerShell",
-        "hooks": [{ "type": "command", "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/warn-shell-writes.sh\"", "timeout": 10 }]
+        "hooks": [{ "type": "command", "command": "awk -f \"$CLAUDE_PROJECT_DIR/.claude/hooks/warn-shell-writes.awk\"", "timeout": 10 }]
       }
     ]
   },

@@ -8,15 +8,20 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // runHook feeds a hook script the stdin Claude Code gives it and returns
-// its stdout.
+// its stdout. A .awk script runs as awk -f, as the project settings run it.
 func runHook(t *testing.T, script string, input any, env ...string) string {
 	t.Helper()
-	sh, err := exec.LookPath("sh")
+	interp, args := "sh", []string{}
+	if strings.HasSuffix(script, ".awk") {
+		interp, args = "awk", []string{"-f"}
+	}
+	bin, err := exec.LookPath(interp)
 	if err != nil {
-		t.Skip("no sh")
+		t.Skip("no " + interp)
 	}
 	// Claude Code writes <, >, and & as they are; Go's default escapes them.
 	var raw strings.Builder
@@ -26,12 +31,12 @@ func runHook(t *testing.T, script string, input any, env ...string) string {
 		t.Fatal(err)
 	}
 	path := filepath.Join(root, ".claude", "hooks", script)
-	// Reading the script makes go test's cache key on it; sh's own read
+	// Reading the script makes go test's cache key on it; the shell's read
 	// would not, and a cached pass would hide an edit.
 	if _, err := os.ReadFile(path); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(sh, path)
+	cmd := exec.Command(bin, append(args, path)...)
 	cmd.Stdin = strings.NewReader(raw.String())
 	cmd.Env = append(os.Environ(), env...)
 	var stderr strings.Builder
@@ -80,6 +85,31 @@ func TestShellWriteHookWarns(t *testing.T) {
 		{"Bash", "cat <<'EOF' > notes.txt\nwrite to a.md with > a.md\nEOF", false},
 		{"Bash", "gh pr create --body \"sed -i fixed README.md\"", false},
 		{"PowerShell", "Get-Content README.md | Select-Object -First 5", false},
+
+		// Review findings: an in-place flag is an option word, not any
+		// hyphenated path; python warns only on code that writes a .go or
+		// .md file; a commit's text is data however git is spelled.
+		{"Bash", "sed -i 's/a/b/' knowledge/decisions/dev-environment.md", true},
+		{"Bash", "git -C . commit -m x && sed -i s/a/b/ a.go", true},
+		{"Bash", "echo x > a.md # done", true},
+		{"Bash", "cat <<EOF>>knowledge/log.md\n* entry\nEOF", true},
+		{"Bash", "cat <<-EOF > a.go\n\tpackage a\n\tEOF", true},
+		{"Bash", `echo x > "notes dir/a.md"`, true},
+		{"Bash", "git commit -F - <<'EOF'\nverify: cat > a.md\nEOF", false},
+		{"PowerShell", `"see a.md" | Out-File notes.txt`, false},
+		{"Bash", "sed -n 1,40p knowledge/decisions/dev-environment.md", false},
+		{"Bash", "sed -n 1,40p knowledge/decisions/inner-tier-trigger.md", false},
+		{"Bash", "sed -n 1,40p .claude/worktrees/dev-integration/x.go", false},
+		{"Bash", "sed -n 1,40p C:/src/reliab/.claude/worktrees/small-fixes/internal/guard/guard.go", false},
+		{"Bash", "perl -MList::Util -ne 'print' docs/windows.md", false},
+		{"Bash", `python -c "import sys; sys.stdout.write(open('README.md').read())"`, false},
+		{"Bash", "python3 - <<'EOF'\nopen('out.txt','w').write(open('README.md').read())\nEOF", false},
+		{"Bash", `git log --oneline -5 && grep -rn "write" --include=*.go internal/okf | head; python3 --version`, false},
+		{"Bash", "cat > notes.txt <<EOF\nDo not use python to write README.md\nEOF", false},
+		{"Bash", `git -C . commit -m "cat > a.md"`, false},
+		{"Bash", "echo hi # > a.md", false},
+		{"PowerShell", "Get-Content a.md | Set-Content -Path b.txt", false},
+		{"PowerShell", "git -C . commit -m \"[IO.File]::WriteAllText('a.go', $s)\"", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.command, func(t *testing.T) {
@@ -89,7 +119,7 @@ func TestShellWriteHookWarns(t *testing.T) {
 				"tool_name": tt.tool, "tool_input": map[string]any{"command": tt.command, "description": "d"},
 				"tool_use_id": "t",
 			}
-			out := runHook(t, "warn-shell-writes.sh", in)
+			out := runHook(t, "warn-shell-writes.awk", in)
 			if !tt.warn {
 				if out != "" {
 					t.Errorf("%s %q: warned %q, want silence", tt.tool, tt.command, out)
@@ -112,6 +142,26 @@ func TestShellWriteHookWarns(t *testing.T) {
 				t.Errorf("%s %q: output %+v, want a PreToolUse warning without a decision", tt.tool, tt.command, res)
 			}
 		})
+	}
+}
+
+// The hook runs on every shell call, large heredocs among them, so its cost
+// must grow with the command's length, not its square: a 200 KB heredoc
+// stays far inside the hook's 10 s timeout (knowledge/decisions/
+// dev-environment.md; review finding on quadratic cost).
+func TestShellWriteHookLinear(t *testing.T) {
+	t.Parallel()
+	body := strings.Repeat("a line that names README.md and a.go but writes notes.txt\n", 3500)
+	in := map[string]any{
+		"hook_event_name": "PreToolUse", "tool_name": "Bash",
+		"tool_input": map[string]any{"command": "cat > notes.txt <<'EOF'\n" + body + "EOF"},
+	}
+	start := time.Now()
+	if out := runHook(t, "warn-shell-writes.awk", in); out != "" {
+		t.Errorf("warned %q, want silence", out)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Errorf("a %d KB command took %v", len(body)/1024, d)
 	}
 }
 

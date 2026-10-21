@@ -42,7 +42,12 @@ in a hook is as serious as a bypass.
 - **Prepr and the review come before a branch merges into main**, by a PR
   or a local merge, in AGENTS.md and the template profile init writes. The
   author commits first; the reviewer's description says it reviews
-  committed work only.
+  committed work only. This updates the "before a PR" trigger in
+  [inner-tier-trigger](/decisions/inner-tier-trigger.md) and
+  [reviewer-verdict](/decisions/reviewer-verdict.md), which now say so, and
+  the verify skill and README follow. The session-start brief the guard
+  prints (`internal/guard`) still says "before a PR"; changing it is left
+  to the guard's owner.
 - **The reviewer is also a project agent here**:
   `.claude/agents/reviewer.md` is a byte copy of
   `plugin/agents/reviewer.md`, and a repocheck test fails when they differ.
@@ -56,15 +61,24 @@ in a hook is as serious as a bypass.
   project agent of that name record a verdict in every consumer
   repository).
 - **A PreToolUse hook warns on shell writes to `.go` and `.md` files**
-  (`.claude/hooks/warn-shell-writes.sh`, Bash and PowerShell). It returns
+  (`.claude/hooks/warn-shell-writes.awk`, Bash and PowerShell). It returns
   `additionalContext` with exit 0 and no permission decision, so the
-  command runs as before and the agent reads the warning. It reads the
-  command with shell builtins and spawns one `grep` only after a cheap
-  match: about 70 ms a call on Windows, nearly all of it starting `sh`.
-  To keep false positives down it ignores text after `git commit`, `git
-  tag`, `gh pr`, and `gh issue`, and a heredoc's body; it can still warn on
-  such text elsewhere, which costs a line of context, never a blocked
-  command.
+  command runs as before and the agent reads the warning. The settings run
+  it as `awk -f`, one process with no `sh` in front, and its work is linear
+  in the command's length: a call takes about the time awk takes to start,
+  and a 200 KB heredoc about 0.1 s. It splits the command as a shell would
+  (quotes, escapes, comments, heredocs, `;`, `&&`, `|`) and looks only at
+  what can write: a redirect target, `sed` or `perl` with an in-place
+  option word, `tee`, PowerShell's content cmdlets and `File.WriteAll*`,
+  and python code (its `-c` argument or the heredoc it reads) that opens a
+  file for writing or calls `write_text` on a `.go` or `.md` path. So a
+  hyphenated path, a commit message, a heredoc's data, or python that only
+  reads stays quiet. A first version matched patterns over the whole
+  command: a review found it warned on `sed -n` over 24 of the 42 decision
+  files (any `-...i` in a path read as `-i`), on python that wrote to
+  stdout, and on commit text after `git -C`; and its shell expansions grew
+  with the square of a heredoc's size, past the hook's 10 s timeout at
+  about 200 KB.
 - **A SessionStart hook builds the checkout's reliab**
   (`.claude/hooks/dev-session-start.sh`) into `.devbin/` (gitignored) and
   appends `.devbin` to PATH through `CLAUDE_ENV_FILE`. `go build` is the
@@ -84,7 +98,11 @@ in a hook is as serious as a bypass.
 ## Consequences
 
 - Everyone who opens the repository gets these hooks; they need Git Bash on
-  Windows (`sh`). A missing `sh` or script errors without blocking.
+  Windows (`sh`, `awk`). A missing `sh`, `awk`, or script errors without
+  blocking.
+- The write hook misses writes it cannot see: a script file run by python,
+  code inside `bash -c`, a path held in a shell variable. It warns; it is
+  not a guard.
 - The PowerShell tool may not see the PATH the SessionStart hook sets.
 - Hook scripts are not Go inputs, so their tests read the script to make
   `go test`'s cache key on it.
