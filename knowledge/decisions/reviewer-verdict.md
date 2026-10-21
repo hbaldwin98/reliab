@@ -91,7 +91,9 @@ That is what lets a hook tell the reviewer from the author.
   AGENTS rules, and the session-start brief say to have the reviewer review
   the change after a clean prepr and before a PR, and never to run the
   verdict command
-  ([pr-evidence-summary](/decisions/pr-evidence-summary.md)).
+  ([pr-evidence-summary](/decisions/pr-evidence-summary.md)). Since
+  widened to before a branch merges into main, by a PR or locally, with the
+  change committed first ([dev-environment](/decisions/dev-environment.md)).
 
 ## Threat model and limits
 
