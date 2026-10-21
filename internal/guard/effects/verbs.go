@@ -12,7 +12,7 @@ var (
 	// the subcommands gitWrites names. It is a heuristic; the CI gate is the
 	// backstop.
 	writeVerbs = map[string]bool{
-		"cp": true, "mv": true, "rm": true, "rmdir": true, "tee": true, "truncate": true, "dd": true, "install": true,
+		"tee-object": true, "cp": true, "mv": true, "rm": true, "rmdir": true, "tee": true, "truncate": true, "dd": true, "install": true,
 		"ln": true, "touch": true, "chmod": true,
 		"set-content": true, "add-content": true, "out-file": true, "remove-item": true, "copy-item": true, "move-item": true,
 		"new-item": true, "rename-item": true, "clear-content": true, "del": true, "erase": true, "ri": true, "rd": true,
@@ -49,6 +49,8 @@ var (
 		"stdbuf":  set("-i", "-o", "-e", "--input", "--output", "--error"),
 		"busybox": {}, "&": {}, "chronic": {}, "unbuffer": {},
 	}
+	// watchValues are watch(1)'s options that take the next word.
+	watchValues = set("-n", "--interval", "-q", "--equexit")
 	// shells run the word after -c, and their standard input, as code.
 	shells = set("sh", "bash", "zsh", "dash", "ksh", "mksh", "ash", "fish", "su", "runuser")
 	// pwshes run the words after -Command, and their standard input, as
@@ -77,6 +79,15 @@ func head(ws []string) int {
 		w := ws[i]
 		if assign.MatchString(w) || headKeywords[strings.ToLower(w)] {
 			i++
+			continue
+		}
+		// function name body, and coproc name { body } (GNU Bash manual
+		// §3.3, §3.2.6): the body runs, not the name.
+		if low := strings.ToLower(w); low == "function" || low == "coproc" {
+			i++
+			if i+1 < len(ws) && (low == "function" || ws[i+1] == "{") && ws[i] != "{" {
+				i++
+			}
 			continue
 		}
 		n := name(w)
@@ -146,6 +157,7 @@ func effectsOf(ws []string, sh Shell) (writes, whole []string, push bool, code [
 	n, args := name(ws[h]), ws[h+1:]
 	if n == "git" {
 		k := gitSubcommand(args)
+		var aliases map[string]string
 		for j := 0; j+1 < len(args) && (k < 0 || j < k); j++ {
 			// git -c alias.x='!cmd' and git -c core.pager=cmd run cmd.
 			if args[j] == "-c" {
@@ -153,6 +165,11 @@ func effectsOf(ws []string, sh Shell) (writes, whole []string, push bool, code [
 				key = strings.ToLower(key)
 				if strings.HasPrefix(key, "alias.") && strings.HasPrefix(val, "!") {
 					code = append(code, nestedCode{val[1:], Bash})
+				} else if strings.HasPrefix(key, "alias.") {
+					if aliases == nil {
+						aliases = map[string]string{}
+					}
+					aliases[key[len("alias."):]] = val
 				} else if key == "core.pager" || key == "core.editor" || key == "core.sshcommand" || key == "sequence.editor" {
 					code = append(code, nestedCode{val, Bash})
 				}
@@ -162,13 +179,21 @@ func effectsOf(ws []string, sh Shell) (writes, whole []string, push bool, code [
 			return
 		}
 		sub, rest := strings.ToLower(args[k]), args[k+1:]
+		// An alias without ! runs the git subcommand it names, with its
+		// words before the line's (git-config(1) alias.*).
+		if a, ok := aliases[sub]; ok {
+			if f := strings.Fields(a); len(f) > 0 {
+				sub, rest = strings.ToLower(f[0]), append(f[1:], rest...)
+			}
+		}
 		if gitWrites[sub] && !indexOnly(sub, rest) {
 			writes = append(writes, rest...)
 			if gitDirWrites[sub] {
 				whole = append(whole, rest...)
 			}
 		}
-		push = sub == "push"
+		// git subtree push pushes a subtree to a remote (git-subtree(1)).
+		push = sub == "push" || sub == "subtree" && subtreeCommand(rest) == "push"
 		if sub == "rebase" {
 			for j, a := range rest {
 				if (a == "-x" || a == "--exec") && j+1 < len(rest) {
@@ -205,6 +230,10 @@ func effectsOf(ws []string, sh Shell) (writes, whole []string, push bool, code [
 		dashC := false
 		for j, a := range args {
 			if a == "--" {
+				// sh -c -- 'code': the code string follows the --.
+				if dashC && j+1 < len(args) {
+					code = append(code, nestedCode{args[j+1], Bash})
+				}
 				break
 			}
 			if a == "-c" || a == "--command" || len(a) > 1 && a[0] == '-' && a[1] != '-' && strings.ContainsRune(a[1:], 'c') {
@@ -231,8 +260,22 @@ func effectsOf(ws []string, sh Shell) (writes, whole []string, push bool, code [
 				break
 			}
 		}
-	} else if n == "eval" || n == "watch" {
+	} else if n == "eval" {
 		code = append(code, nestedCode{strings.Join(args, " "), sh})
+	} else if n == "watch" {
+		// watch(1) runs its words after its options as one command.
+		k := 0
+		for k < len(args) && strings.HasPrefix(args[k], "-") && len(args[k]) > 1 {
+			if args[k] == "--" {
+				k++
+				break
+			}
+			if watchValues[args[k]] {
+				k++
+			}
+			k++
+		}
+		code = append(code, nestedCode{strings.Join(args[min(k, len(args)):], " "), sh})
 	} else if n == "iex" || n == "invoke-expression" {
 		var rest []string
 		for _, a := range args {
@@ -249,6 +292,19 @@ func effectsOf(ws []string, sh Shell) (writes, whole []string, push bool, code [
 		}
 	}
 	return
+}
+
+// subtreeCommand returns git subtree's command among its words, past its
+// options and the values of -P, --prefix, and -m (git-subtree(1)).
+func subtreeCommand(args []string) string {
+	for k := 0; k < len(args); k++ {
+		if a := args[k]; a == "-P" || a == "--prefix" || a == "-m" || a == "--message" {
+			k++
+		} else if !strings.HasPrefix(a, "-") {
+			return a
+		}
+	}
+	return ""
 }
 
 // indexOnly reports whether a git restore or reset changes only the index,

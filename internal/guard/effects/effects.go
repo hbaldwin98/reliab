@@ -126,7 +126,9 @@ func (r *reader) read(l *line, dirs []string, data bool, depth int) {
 		if text, ok := runsScript(ws, scripts); ok {
 			code = append(code, nestedCode{text, l.sh})
 		}
+		code = append(code, sourcedSubs(c, ws, l.sh)...)
 		cmdDirs := union(c.cwds, c.may)
+		writes, whole = expand(writes, cmdDirs, l.sh), expand(whole, cmdDirs, l.sh)
 		if len(ws) > 0 || len(writes) > 0 {
 			r.e.Commands = append(r.e.Commands, Command{Words: ws, Dirs: cmdDirs, Writes: writes, Whole: whole})
 		}
@@ -213,6 +215,37 @@ func scriptsWritten(l *line) map[string]string {
 		}
 	}
 	return m
+}
+
+// sourcedSubs returns the text a process substitution prints when a shell
+// runs it as a script, as in . <(echo …) or bash <(printf …): the echo or
+// printf words, or a heredoc body, of each command in it.
+func sourcedSubs(c *simple, ws []string, sh Shell) []nestedCode {
+	h := head(ws)
+	if h < 0 {
+		return nil
+	}
+	if n := name(ws[h]); !shells[n] && !pwshes[n] && n != "source" && n != "." {
+		return nil
+	}
+	var out []nestedCode
+	for _, w := range c.words[h+1:] {
+		if !strings.HasPrefix(w.text, "<(") {
+			continue
+		}
+		for _, s := range w.subs {
+			for _, sc := range s.cmds {
+				for _, b := range sc.bodies {
+					out = append(out, nestedCode{b.text, sh})
+				}
+				sws := sc.texts()
+				if k := head(sws); k >= 0 && (name(sws[k]) == "echo" || name(sws[k]) == "printf") {
+					out = append(out, nestedCode{strings.Join(sws[k+1:], " "), sh})
+				}
+			}
+		}
+	}
+	return out
 }
 
 // runsScript returns the text written earlier on the line to the file a

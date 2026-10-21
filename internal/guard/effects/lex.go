@@ -382,8 +382,14 @@ func (l *lexer) stepBash() {
 		l.endWord()
 		l.cur.doubt = true
 		g, next := l.nested(l.i+1, ')')
-		l.cur.groups = append(l.cur.groups, g)
 		l.i = next
+		if n := len(l.cur.words); n > 0 && strings.TrimSpace(g.text) == "" {
+			// name () body defines a function (§3.3): its body is the
+			// command read next, and runs when the name is called.
+			l.cur.words = l.cur.words[:n-1]
+			return
+		}
+		l.cur.groups = append(l.cur.groups, g)
 	} else if c == ')' {
 		l.cur.doubt = true
 		l.sep(1)
