@@ -24,6 +24,16 @@ var (
 	// gitPathOptions are git's global options that take a value and only
 	// say where the repository is (git(1) SYNOPSIS).
 	gitPathOptions = map[string]bool{"-C": true, "--git-dir": true, "--work-tree": true, "--namespace": true}
+	// inertCommands and inertGit run no text they are given: they may
+	// share a line with a data command whose text stays data (inert).
+	inertCommands = map[string]bool{
+		"true": true, "false": true, ":": true, "tail": true, "head": true, "wc": true, "sort": true, "uniq": true,
+		"cut": true, "sleep": true, "pwd": true, "ls": true, "go": true,
+	}
+	inertGit = map[string]bool{
+		"push": true, "pull": true, "fetch": true, "status": true, "log": true, "show": true, "diff": true, "add": true,
+		"commit": true, "tag": true, "branch": true, "switch": true, "rev-parse": true, "remote": true,
+	}
 )
 
 // dataArgs returns the index of the first of c's words that is data, or -1
@@ -77,10 +87,61 @@ func allData(l *line) bool {
 	return true
 }
 
-// codeText returns the line with its data blanked out, keeping every byte
-// offset, when the line is all data; otherwise the line unchanged.
+// inert reports whether a command runs no text it is given and holds no
+// substitution: it cannot run a data command's text, as bash -c "$(git log
+// -1 --format=%B)" or git rebase --exec would. Only bare names count, as
+// for data commands.
+func inert(c *simple) bool {
+	ws := c.words
+	if len(ws) == 0 || len(c.groups) > 0 {
+		return false
+	}
+	for _, w := range ws {
+		if w.expands || len(w.subs) > 0 {
+			return false
+		}
+	}
+	if inertCommands[ws[0].text] {
+		return true
+	}
+	if ws[0].text != "git" {
+		return false
+	}
+	for k := 1; k < len(ws); k++ {
+		w := ws[k].text
+		opt, _, eq := strings.Cut(w, "=")
+		if gitPathOptions[w] {
+			k++
+		} else if eq && gitPathOptions[opt] || w == "--no-pager" || w == "-P" {
+			continue
+		} else {
+			return inertGit[w]
+		}
+	}
+	return false
+}
+
+// dataLine reports whether a Bash line's data commands hold data: no
+// command on it is doubtful, and each is a data command or an inert one,
+// as in git commit -m "…" && git push, or git commit -m "…" || true. Any
+// other command judges the whole line, for it might run the data.
+func dataLine(l *line) bool {
+	if l.sh != Bash {
+		return false
+	}
+	for _, c := range l.cmds {
+		if c.doubt || dataArgs(c) < 0 && !inert(c) {
+			return false
+		}
+	}
+	return true
+}
+
+// codeText returns the line with its data commands' data blanked out,
+// keeping every byte offset, when the line holds data (dataLine); otherwise
+// the line unchanged.
 func codeText(l *line) string {
-	if !allData(l) {
+	if !dataLine(l) {
 		return l.text
 	}
 	b := []byte(l.text)

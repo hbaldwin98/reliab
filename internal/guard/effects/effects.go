@@ -91,7 +91,7 @@ func Read(text string, sh Shell, dir string) *Effects {
 func read(text string, sh Shell, dir string) *Effects {
 	r := &reader{e: &Effects{}}
 	l := lex(text, sh, 0)
-	data := allData(l)
+	data := dataLine(l)
 	r.e.Code = text
 	if data {
 		r.e.Code = codeText(l)
@@ -134,8 +134,8 @@ func (r *reader) read(l *line, dirs []string, data bool, depth int) {
 		}
 		r.e.Push = r.e.Push || push
 		upTo := len(ws)
-		if data {
-			upTo = dataArgs(c)
+		if k := dataArgs(c); data && k >= 0 {
+			upTo = k
 		}
 		r.e.calls = append(r.e.calls, calls(c.words, pwsh, upTo)...)
 
