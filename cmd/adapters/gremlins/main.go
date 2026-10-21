@@ -17,6 +17,11 @@
 // not covered (go-gremlins/gremlins#222). Inside one package the paths have
 // no separator and match.
 //
+// gremlins mutates every Go file in a package, also one this platform does
+// not build (lock_unix.go on Windows), and calls its mutants not covered,
+// since no test here can compile them. Their mutants are dropped and not
+// counted: the platform that builds the file measures it.
+//
 // gremlins exits 0 with survivors, so its exit code is not consulted. With a
 // report missing or unreadable, this exits 1 and writes nothing, and reliab
 // reports the command as failed.
@@ -26,6 +31,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"go/build"
 	"io"
 	"os"
 	"os/exec"
@@ -133,6 +139,9 @@ func convertFiles(raw []byte, dir string, keep func(string, int) bool, files map
 		if dir != "" && dir != "." {
 			file = path.Join(dir, file)
 		}
+		if !builtHere(file) {
+			continue
+		}
 		for _, m := range f.Mutations {
 			if keep != nil && !keep(file, m.Line) {
 				continue
@@ -160,6 +169,14 @@ func convertFiles(raw []byte, dir string, keep func(string, int) bool, files map
 		}
 	}
 	return ms, c, nil
+}
+
+// builtHere reports whether this platform builds file, a path from the
+// working directory, by its name and build constraints. A file it cannot
+// read counts as built, so a mutant is never dropped by a missing file.
+func builtHere(file string) bool {
+	ok, err := build.Default.MatchFile(filepath.Dir(filepath.FromSlash(file)), filepath.Base(file))
+	return ok || err != nil
 }
 
 // changedSince returns the lines changed since base, per file. It runs

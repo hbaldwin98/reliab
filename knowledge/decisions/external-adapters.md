@@ -221,6 +221,15 @@ format, never by tool (paper P7), and a one-tool format breaks that.
   a mutant in one as not covered even when tests would kill it. Keep
   conditions in case bodies rather than case expressions in code gremlins
   covers.
+- **gremlins mutants in a file this platform does not build are dropped**
+  (added 2026-10-20). gremlins mutates every Go file in the package, also
+  one a build constraint or `_GOOS` name leaves out here (`lock_unix.go` on
+  Windows), and calls its mutants not covered, since no test here can
+  compile them. The adapter checks each file's name and constraints
+  (`go/build`'s `MatchFile`, one header read per file) and neither reports
+  nor counts those mutants; the platform that builds the file measures it.
+  A file it cannot read counts as built. Before, a Windows prepr on a
+  change to `lock_unix.go` held a survivor no test could ever reach.
 - `report route` gives surviving mutants their own advice (kill it with a
   test, or say it is equivalent) and shows enough of the diff to see the
   mutated line. A command that failed without reporting a test (a build

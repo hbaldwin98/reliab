@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -213,5 +214,36 @@ func TestTimedOutMutantsAreKilledNotSurvivors(t *testing.T) {
 	}
 	if files := adapters.FindingsFileCounts(raw); files["internal/verify/lock.go"].Killed != 2 || files["internal/verify/lock.go"].Survived != 0 {
 		t.Errorf("file counts = %+v, want 2 killed in internal/verify/lock.go", files)
+	}
+}
+
+// knowledge/decisions/external-adapters.md: a mutant in a file this platform
+// does not build is not a survivor here, since no test here can compile it;
+// it is dropped and not counted, and the platform that builds the file
+// measures it.
+func TestMutantsInFilesThisPlatformDoesNotBuildAreDropped(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, src string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("here.go", "package p\n")
+	write("elsewhere.go", "//go:build !"+runtime.GOOS+"\n\npackage p\n")
+	raw := `{"go_module":"example.com/m","files":[
+  {"file_name":"elsewhere.go","mutations":[
+    {"type":"CONDITIONALS_NEGATION","status":"NOT COVERED","line":3,"column":1},
+    {"type":"CONDITIONALS_NEGATION","status":"LIVED","line":3,"column":2}]},
+  {"file_name":"here.go","mutations":[
+    {"type":"CONDITIONALS_NEGATION","status":"NOT COVERED","line":1,"column":1}]}]}`
+	got, counts, err := convert([]byte(raw), filepath.ToSlash(dir), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counts != (findings.MutantCounts{NotCovered: 1}) {
+		t.Errorf("counts = %+v, want only here.go's mutant", counts)
+	}
+	if len(got) != 1 || !strings.HasSuffix(got[0].File, "/here.go") {
+		t.Errorf("mutants = %+v, want only here.go's", got)
 	}
 }
