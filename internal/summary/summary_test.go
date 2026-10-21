@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -435,5 +436,55 @@ func TestNamedTestsAndNeedsInput(t *testing.T) {
 	}
 	if md := Markdown(s); strings.Contains(md, "- Tests named") || !strings.Contains(md, "- Mutation tests named (`--mutation-tests`): `Ns.A`.") {
 		t.Errorf("mutation tests named, tests not:\n%s", md)
+	}
+}
+
+// knowledge/decisions/report-profile-path.md: the summary names the
+// profile file the run loaded and the one it judged by, a file the default
+// profile protects judges its own report, and the list of protected-path
+// changes always reads the default profile (protected-path-approval.md).
+func TestSummaryNamesTheProfileFile(t *testing.T) {
+	root := testrepo.New(t, "protected_paths: [\"snapshots/**\", \"alt.yaml\"]\ncommands:\n  build: \"true\"\n")
+	second := "schemaVersion: 0.1.0\nname: alt\nstarting_condition: greenfield\n" +
+		"paths: { product: [\"src/**\"], tests: [\"test/**\"], ignore: [\"docs/**\"] }\n" + testrepo.Roles +
+		"commands:\n  build: \"true\"\ntiers:\n  prepr: { run: [build] }\n"
+	testrepo.Write(t, root, "alt.yaml", second)
+	testrepo.Git(t, root, "add", "alt.yaml")
+	testrepo.Git(t, root, "commit", "-qm", "alt profile")
+	testrepo.Git(t, root, "checkout", "-q", "-b", "feature")
+	testrepo.Write(t, root, "snapshots/s.txt", "changed")
+	testrepo.Write(t, root, "other.yaml", second)
+	// The branch's default profile protects notes/ too; alt.yaml protects
+	// nothing.
+	def, err := os.ReadFile(filepath.Join(root, "reliability-profile.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	testrepo.Write(t, root, "reliability-profile.yaml", strings.Replace(string(def), "\"alt.yaml\"]", "\"alt.yaml\", \"notes/**\"]", 1))
+	testrepo.Write(t, root, "notes/n.txt", "a note")
+	prepr := func(prof string) *Summary {
+		t.Helper()
+		if _, _, err := verify.Run(context.Background(), verify.Options{Root: root, Profile: prof, Tier: "prepr"}); err != nil {
+			t.Fatal(err)
+		}
+		return build(t, root)
+	}
+
+	s := prepr("alt.yaml")
+	md := Markdown(s)
+	if !strings.Contains(md, "- Profile file `alt.yaml`; judged by `alt.yaml`.\n") {
+		t.Errorf("markdown does not name the protected profile file as its judge:\n%s", md)
+	}
+	protected := map[string]bool{}
+	for _, c := range s.Protected {
+		protected[c.Path] = true
+	}
+	if !protected["snapshots/s.txt"] || !protected["notes/n.txt"] {
+		t.Errorf("protected = %+v, want snapshots/s.txt and notes/n.txt from the default profile", s.Protected)
+	}
+
+	md = Markdown(prepr("other.yaml"))
+	if !strings.Contains(md, "- Profile file `other.yaml`; judged by `reliability-profile.yaml`, since `reliability-profile.yaml` does not protect it.\n") {
+		t.Errorf("markdown does not say the default judged an unprotected file:\n%s", md)
 	}
 }

@@ -635,3 +635,57 @@ func TestRouteNamedTestsAndNeedsInput(t *testing.T) {
 		t.Errorf("tests named, mutation tests not:\n%s", buf.String())
 	}
 }
+
+// knowledge/decisions/finding-classification.md: classify records a fixed
+// finding's kind on the newest run of this branch that holds it, the run
+// the PR summary reads; .reliab/ is shared by every branch of a checkout,
+// so a later run on another branch must not take it.
+func TestClassifyAFixedFindingOnThisBranch(t *testing.T) {
+	root := testrepo.New(t, "commands:\n  analyzers: test -f src/fixed || { echo lint broke; exit 1; }\n")
+	commit := func(msg string) {
+		t.Helper()
+		testrepo.Git(t, root, "add", "-A")
+		testrepo.Git(t, root, "commit", "-qm", msg)
+	}
+	testrepo.Git(t, root, "checkout", "-q", "-b", "feature")
+	testrepo.Write(t, root, "src/feature.txt", "feature work")
+	commit("feature")
+	run(t, root, 1)
+	featureRun, err := report.Read(report.LatestPath(root, "prepr"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	testrepo.Git(t, root, "checkout", "-q", "-b", "other", "main")
+	testrepo.Write(t, root, "src/other.txt", "other work")
+	commit("other")
+	run(t, root, 2)
+	testrepo.Git(t, root, "checkout", "-q", "feature")
+	testrepo.Write(t, root, "src/fixed", "")
+	commit("fix")
+	run(t, root, 3)
+
+	got, err := Classify(root, "F-analyzers", report.KindHarnessDefect, "lint config named a missing file", time.Now())
+	if err != nil || len(got) != 1 || !strings.Contains(got[0], "history prepr "+featureRun.Run.StartedAt) {
+		t.Fatalf("got %v, %v; want this branch's prepr at %s", got, err, featureRun.Run.StartedAt)
+	}
+}
+
+// AGENTS.md: run the inner tier when a change is done and classify every
+// failure before reporting; a failure the inner tier saw and the next inner
+// run no longer has is classified with no pre-PR report yet.
+func TestClassifyAFixedFindingBeforeAnyPrepr(t *testing.T) {
+	root := testrepo.New(t, "commands:\n  analyzers: test -f src/fixed || { echo lint broke; exit 1; }\n")
+	inner := func(m int) {
+		t.Helper()
+		at := func() time.Time { return time.Now().Add(time.Duration(m) * time.Minute) }
+		if _, _, err := verify.Run(context.Background(), verify.Options{Root: root, Profile: "reliability-profile.yaml", Tier: "inner", Now: at}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	inner(0)
+	testrepo.Write(t, root, "src/fixed", "")
+	inner(1)
+	if got, err := Classify(root, "F-analyzers", report.KindHarnessDefect, "lint config named a missing file", time.Now()); err != nil || len(got) != 1 || !strings.HasPrefix(got[0], "history inner ") {
+		t.Fatalf("got %v, %v; want the first inner run", got, err)
+	}
+}
