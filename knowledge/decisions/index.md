@@ -7,7 +7,7 @@
 * [reliab makes no assumptions about where it is used](context-agnostic.md) - The tool and repo never refer to any particular deployment, organisation, or private system.
 * [First targets: reliab itself and a real consumer repository](dogfood-targets.md) - v0 is proven on reliab's own repo (Go, greenfield) and on a real consumer repository in another ecosystem, plus a fixture service under testdata/.
 * [Enforcement hooks decide for themselves; CI gates are authoritative](enforcement-hooks-self-contained.md) - Enforcement hooks match every relevant tool call without if filters and parse the command in reliab; in-session enforcement is best-effort and CI decides.
-* [Adapters emit unclassified findings; the agent classifies](finding-classification.md) - Every adapter finding starts unclassified; reliab findings classify records the kind; hooks block on unclassified.
+* [Adapters emit unclassified findings; the agent classifies](finding-classification.md) - Every adapter finding starts unclassified; reliab findings classify records the kind; hooks block on unclassified. Per-kind policy is one table, report.Kinds.
 * [The CLI is written in Go](go-cli.md) - Single static binaries per OS, fast hook startup; latest stable Go (1.27.2) with cobra and minimal dependencies.
 * [Spike undocumented hook behavior before building hook logic](hook-behavior-spike.md) - Superseded: the design no longer depends on the answers, so the spike was dropped.
 * [What the v0 hooks decide](hook-decisions-v0.md) - pre-edit, pre-bash, stop, and session-start rules; human-only acknowledgement; fail open on a broken profile; never exit 2 on a hook error.
