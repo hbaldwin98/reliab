@@ -18,11 +18,11 @@ drive it through the plugin's skills.
    binary and the adapters into `~/.reliab/bin` (then add it to your PATH):
 
    ```sh
-   curl -fsSL https://raw.githubusercontent.com/hbaldwin98/reliab/main/scripts/install.sh | sh -s -- 0.2.0
+   curl -fsSL https://raw.githubusercontent.com/hbaldwin98/reliab/main/scripts/install.sh | sh -s -- 0.2.1
    ```
 
    ```powershell
-   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/hbaldwin98/reliab/main/scripts/install.ps1))) -Version 0.2.0
+   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/hbaldwin98/reliab/main/scripts/install.ps1))) -Version 0.2.1
    ```
 
    Check it with `reliab version`.
