@@ -28,8 +28,8 @@ generated:
   index/log structure; broken links warn, not fail.
 - Section indexes (`<section>/index.md`) are generated, not written by
   hand: `go generate ./internal/okf` (or `go run ./internal/okf/okfindex`)
-  writes one entry per concept, `* [title](file.md) - description` from its
-  frontmatter, in file-name order, under the root index's link text for the
+  writes one entry per concept, its `title` linked to its file and then
+  ` - ` and its `description` from its frontmatter, in file-name order, under the root index's link text for the
   section. A test fails when a checked-in index is out of date. Added
   2026-10-20: hand-kept entries had drifted from five decisions'
   descriptions and out of order, and two branches each appending an entry
