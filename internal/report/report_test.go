@@ -95,3 +95,21 @@ func TestNeedsInput(t *testing.T) {
 		t.Errorf("NeedsInput = %+v", got)
 	}
 }
+
+// knowledge/decisions/report-freshness.md: a report vouches for the tree it
+// ran on, and for no tree once the tree changed while it ran, even the tree
+// it started on.
+func TestFreshFor(t *testing.T) {
+	r := minimal("inner", "2026-10-20T09:00:00Z")
+	start, other := r.Run.TreeHash, "fedcba9876543210fedcba9876543210fedcba98"
+	if !r.FreshFor(start) {
+		t.Error("a report is not fresh for the tree it ran on")
+	}
+	if r.FreshFor(other) {
+		t.Error("a report is fresh for a tree it did not run on")
+	}
+	r.Run.TreeHashEnd = other
+	if r.FreshFor(start) || r.FreshFor(other) {
+		t.Error("a report whose tree changed during the run is fresh for its start or end tree")
+	}
+}
