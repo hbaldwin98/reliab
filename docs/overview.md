@@ -86,4 +86,4 @@ The hooks remind and never block; the CI gates are authoritative.
 
 `0` passed and complete, `1` open findings, `2` config error (run
 `reliab doctor`), `3` incomplete (the budget ran out, or a command needs
-tests named with `--tests`).
+tests named with `--tests` or `--mutation-tests`).

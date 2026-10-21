@@ -55,7 +55,15 @@ day, on any stack and any [starting condition](/concepts/starting-condition.md).
   `protected_edits` set for the tools in use.
 - **The skill stops at the S0 gate** after `doctor`, inner, and prepr, with
   a report: profile, roles, timings, the suite and its flaky tests, open
-  questions, and skips. It does not start S1, add tests, or commit.
+  questions, skips, and next steps. It does not start S1, add tests, or
+  commit.
+- **The report's next steps** name the CI commands (`reliab docs ci`) and
+  what leads by starting condition: for maintained, a mutation baseline
+  area by area, which the agent proposes with `reliab baseline propose` and
+  a person writes; for legacy, characterization of the most-used surface;
+  for greenfield, properties and mutation on the first endpoint. The skill
+  ended at the gate with no next step, and a maintained repository's first
+  finding, the baseline, was in no skill.
 - **Example profiles** for a made-up Go service (reliab's own shape), Rust
   workspace, and .NET billing service (.NET Framework 4.7.2 and .NET 8 with
   NUnit TRX, core FsCheck, Verify.NUnit, Stryker.NET, Schemathesis, AltCover,
