@@ -2,7 +2,7 @@
 ## Testing rules (reliab)
 
 ### Always
-- Run `reliab verify --tier inner` when a change is done, before you stop or hand back; not after each file edit. Run `reliab verify --tier prepr` before opening a PR. Then have the `reliab:reviewer` agent review the change, and paste `reliab report summary` as the PR body's evidence section, adding nothing it does not support.
+- Run `reliab verify --tier inner` when a change is done, before you stop or hand back; not after each file edit. Run `reliab verify --tier prepr` before a branch merges into main, by a PR or a local merge. Commit, then have the `reliab:reviewer` agent review the change (it reviews committed work only); for a PR, paste `reliab report summary` as the PR body's evidence section, adding nothing it does not support.
 - Read `reliab report route` and act per kind.
 - Write properties from intent. Each property cites its source in a comment: a ticket, a doc, a reviewed rule card, or a caller that depends on the behavior.
 - Reproduce every failure from its seed, shrink it, and classify it before reporting: `reliab findings classify <id> --kind <kind> --reason "..."`.
