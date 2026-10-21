@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -249,6 +250,25 @@ func TestHeavy(t *testing.T) {
 		if got := heavy(tt.tier, tt.onDemand, tt.run); got != tt.want {
 			t.Errorf("heavy(%s, on-demand %v, %v) = %v, want %v", tt.tier, tt.onDemand, tt.run, got, tt.want)
 		}
+	}
+}
+
+// knowledge/decisions/heavy-run-lock.md: the lock lives in reliab under the
+// user cache directory; a test binary takes none unless it names a
+// directory, and a named directory wins.
+func TestLockDir(t *testing.T) {
+	cache := func() (string, error) { return "/home/u/.cache", nil }
+	if got, want := lockDirFor("", false, cache), filepath.Join("/home/u/.cache", "reliab"); got != want {
+		t.Errorf("real run: lock dir %q, want %q", got, want)
+	}
+	if got := lockDirFor("/named", false, cache); got != "/named" {
+		t.Errorf("named: lock dir %q, want /named", got)
+	}
+	if got := lockDirFor("", true, cache); got != "" {
+		t.Errorf("test binary: lock dir %q, want none", got)
+	}
+	if got := lockDirFor("/named", true, cache); got != "/named" {
+		t.Errorf("test naming a dir: lock dir %q, want /named", got)
 	}
 }
 

@@ -47,10 +47,16 @@ func heavy(tier string, onDemand bool, run []string) bool {
 // takes no lock unless a test names a directory, so packages testing
 // verify in parallel do not queue behind each other or behind a real run.
 func lockDir(opt Options) string {
-	if opt.LockDir != "" || testing.Testing() {
-		return opt.LockDir
+	return lockDirFor(opt.LockDir, testing.Testing(), os.UserCacheDir)
+}
+
+// lockDirFor is lockDir with the test check and the cache directory passed
+// in, so a test can see what a real run gets.
+func lockDirFor(named string, inTest bool, cacheDir func() (string, error)) string {
+	if named != "" || inTest {
+		return named
 	}
-	dir, err := os.UserCacheDir()
+	dir, err := cacheDir()
 	if err != nil {
 		return ""
 	}
