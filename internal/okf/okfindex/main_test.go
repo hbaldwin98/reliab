@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -76,5 +77,36 @@ func TestRunFailsLoudly(t *testing.T) {
 	}
 	if got, _ := os.ReadDir(filepath.Join(dir, "untitled", "d")); len(got) != 1 || strings.HasPrefix(got[0].Name(), "index") {
 		t.Errorf("untitled: wrote an index anyway: %v", got)
+	}
+}
+
+// knowledge/decisions/okf-knowledge-bundle.md: go generate runs okfindex,
+// and go generate stops only on a nonzero exit, so the command exits 1 when
+// run fails and 0 when it succeeds. The test binary re-runs itself as the
+// command.
+func TestMainExitStatus(t *testing.T) {
+	if b := os.Getenv("OKFINDEX_MAIN"); b != "" {
+		os.Args = []string{"okfindex", b}
+		main()
+		return
+	}
+	dir := t.TempDir()
+	bundle(t, dir, map[string]string{
+		"good/index.md": rootIndex,
+		"good/d/a.md":   "---\ntype: Decision\ntitle: Ay\n---\n",
+	})
+	for name, want := range map[string]int{"good": 0, "missing": 1} {
+		cmd := exec.Command(os.Args[0], "-test.run=^TestMainExitStatus$")
+		cmd.Env = append(os.Environ(), "OKFINDEX_MAIN="+filepath.Join(dir, name))
+		err := cmd.Run()
+		got := 0
+		if e, ok := err.(*exec.ExitError); ok {
+			got = e.ExitCode()
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("%s: exit %d, want %d", name, got, want)
+		}
 	}
 }
