@@ -128,18 +128,18 @@ func matchClose(s string, i int, close byte) int {
 	}
 	depth := 0
 	for ; i < len(s); i++ {
-		switch c := s[i]; {
-		case c == '\\' || c == '`':
+		switch c := s[i]; c {
+		case '\\', '`':
 			i++
-		case c == '\'' || c == '"':
+		case '\'', '"':
 			if e := strings.IndexByte(s[i+1:], c); e >= 0 {
 				i += e + 1
 			} else {
 				return len(s)
 			}
-		case c == open:
+		case open:
 			depth++
-		case c == close:
+		case close:
 			if depth == 0 {
 				return i
 			}
@@ -305,7 +305,7 @@ func (l *lexer) fdPrefix() {
 	t := l.b.String()
 	ok := t != ""
 	for i := 0; i < len(t); i++ {
-		if (t[i] < '0' || t[i] > '9') && !(t == "*" && l.sh == PowerShell) {
+		if (t[i] < '0' || t[i] > '9') && (t != "*" || l.sh != PowerShell) {
 			ok = false
 		}
 	}
@@ -330,11 +330,10 @@ func (l *lexer) appendRune() {
 
 func (l *lexer) stepBash() {
 	s, c := l.s, l.s[l.i]
-	switch {
-	case c == ' ' || c == '\t':
+	if c == ' ' || c == '\t' {
 		l.endWord()
 		l.i++
-	case c == '\\':
+	} else if c == '\\' {
 		if strings.HasPrefix(s[l.i:], "\\\n") {
 			l.i += 2
 		} else if strings.HasPrefix(s[l.i:], "\\\r\n") {
@@ -347,7 +346,7 @@ func (l *lexer) stepBash() {
 		} else {
 			l.i++
 		}
-	case c == '\'':
+	} else if c == '\'' {
 		l.startWord()
 		l.wq = true
 		end := strings.IndexByte(s[l.i+1:], '\'')
@@ -358,21 +357,21 @@ func (l *lexer) stepBash() {
 			l.b.WriteString(s[l.i+1 : l.i+1+end])
 			l.i += end + 2
 		}
-	case c == '"':
+	} else if c == '"' {
 		l.startWord()
 		l.wq = true
 		l.i++
 		l.doubleBash()
-	case c == '$':
+	} else if c == '$' {
 		l.dollar()
-	case c == '`':
+	} else if c == '`' {
 		l.startWord()
 		l.wx = true
 		sub, next := l.backtick(l.i)
 		l.b.WriteString(s[l.i:next])
 		l.wsubs = append(l.wsubs, sub)
 		l.i = next
-	case c == '(':
+	} else if c == '(' {
 		if l.inWord && strings.HasSuffix(l.b.String(), "=") && !l.wq {
 			// An array assignment, a=(x y): one word.
 			end := matchClose(s, l.i+1, ')')
@@ -385,24 +384,24 @@ func (l *lexer) stepBash() {
 		g, next := l.nested(l.i+1, ')')
 		l.cur.groups = append(l.cur.groups, g)
 		l.i = next
-	case c == ')':
+	} else if c == ')' {
 		l.cur.doubt = true
 		l.sep(1)
-	case c == '\n':
+	} else if c == '\n' {
 		l.sep(1)
-	case c == ';':
+	} else if c == ';' {
 		n := 1
 		for l.i+n < len(s) && (s[l.i+n] == ';' || s[l.i+n] == '&') {
 			n++
 		}
 		l.sep(n)
-	case c == '|':
+	} else if c == '|' {
 		if strings.HasPrefix(s[l.i:], "||") || strings.HasPrefix(s[l.i:], "|&") {
 			l.sep(2)
 		} else {
 			l.sep(1)
 		}
-	case c == '&':
+	} else if c == '&' {
 		if strings.HasPrefix(s[l.i:], "&&") {
 			l.sep(2)
 		} else if strings.HasPrefix(s[l.i:], "&>") {
@@ -416,7 +415,7 @@ func (l *lexer) stepBash() {
 		} else {
 			l.sep(1)
 		}
-	case c == '>':
+	} else if c == '>' {
 		l.fdPrefix()
 		l.cur.doubt = true
 		if strings.HasPrefix(s[l.i:], ">(") {
@@ -433,12 +432,12 @@ func (l *lexer) stepBash() {
 		} else {
 			l.op = opWrite
 		}
-	case c == '<':
+	} else if c == '<' {
 		l.fdPrefix()
 		l.lessThan()
-	case c == '#' && !l.inWord:
+	} else if c == '#' && !l.inWord {
 		l.comment()
-	default:
+	} else {
 		l.startWord()
 		if c == '{' || c == '}' {
 			// Brace expansion or a brace group (§3.5.1, §3.2.5.3).
@@ -451,11 +450,10 @@ func (l *lexer) stepBash() {
 // lessThan reads a redirect that starts with <.
 func (l *lexer) lessThan() {
 	s := l.s
-	switch {
-	case strings.HasPrefix(s[l.i:], "<<<"):
+	if strings.HasPrefix(s[l.i:], "<<<") {
 		l.i += 3
 		l.op = opString
-	case strings.HasPrefix(s[l.i:], "<<"):
+	} else if strings.HasPrefix(s[l.i:], "<<") {
 		h, next := readDelim(s, l.i+2)
 		l.cur.redirs++
 		if h.delim != "" {
@@ -463,15 +461,15 @@ func (l *lexer) lessThan() {
 			l.pending = append(l.pending, h)
 		}
 		l.i = next
-	case strings.HasPrefix(s[l.i:], "<("):
+	} else if strings.HasPrefix(s[l.i:], "<(") {
 		l.processSub()
-	case strings.HasPrefix(s[l.i:], "<>"):
+	} else if strings.HasPrefix(s[l.i:], "<>") {
 		l.i += 2
 		l.op = opWrite
-	case strings.HasPrefix(s[l.i:], "<&"):
+	} else if strings.HasPrefix(s[l.i:], "<&") {
 		l.i += 2
 		l.op = opRead
-	default:
+	} else {
 		l.i++
 		l.op = opRead
 	}
@@ -511,11 +509,10 @@ func (l *lexer) doubleBash() {
 	s := l.s
 	for l.i < len(s) {
 		c := s[l.i]
-		switch {
-		case c == '"':
+		if c == '"' {
 			l.i++
 			return
-		case c == '\\' && l.i+1 < len(s):
+		} else if c == '\\' && l.i+1 < len(s) {
 			switch s[l.i+1] {
 			case '\n':
 				l.i += 2
@@ -526,29 +523,29 @@ func (l *lexer) doubleBash() {
 				l.b.WriteByte('\\')
 				l.i++
 			}
-		case c == '$' && l.i+1 < len(s) && s[l.i+1] == '(':
+		} else if c == '$' && l.i+1 < len(s) && s[l.i+1] == '(' {
 			l.wx = true
 			start := l.i
 			sub, next := l.nested(l.i+2, ')')
 			l.b.WriteString(s[start:next])
 			l.wsubs = append(l.wsubs, sub)
 			l.i = next
-		case c == '$' && l.i+1 < len(s) && s[l.i+1] == '{':
+		} else if c == '$' && l.i+1 < len(s) && s[l.i+1] == '{' {
 			l.wx = true
 			end := matchClose(s, l.i+2, '}')
 			l.b.WriteString(s[l.i:min(end+1, len(s))])
 			l.i = min(end+1, len(s))
-		case c == '$':
+		} else if c == '$' {
 			l.wx = true
 			l.b.WriteByte(c)
 			l.i++
-		case c == '`':
+		} else if c == '`' {
 			l.wx = true
 			sub, next := l.backtick(l.i)
 			l.b.WriteString(s[l.i:next])
 			l.wsubs = append(l.wsubs, sub)
 			l.i = next
-		default:
+		} else {
 			l.appendRune()
 		}
 	}
@@ -562,8 +559,7 @@ func (l *lexer) dollar() {
 	if l.i+1 < len(s) {
 		next = s[l.i+1]
 	}
-	switch {
-	case next == '\'':
+	if next == '\'' {
 		// ANSI-C quoting (§3.1.2.4).
 		l.wq = true
 		l.cur.doubt = true
@@ -577,29 +573,29 @@ func (l *lexer) dollar() {
 			l.appendRune()
 		}
 		l.i = min(l.i+1, len(s))
-	case next == '"':
+	} else if next == '"' {
 		l.wq = true
 		l.i += 2
 		l.doubleBash()
-	case next == '(':
+	} else if next == '(' {
 		l.wx = true
 		start := l.i
 		sub, end := l.nested(l.i+2, ')')
 		l.b.WriteString(s[start:end])
 		l.wsubs = append(l.wsubs, sub)
 		l.i = end
-	case next == '{':
+	} else if next == '{' {
 		l.wx = true
 		l.cur.doubt = true
 		end := matchClose(s, l.i+2, '}')
 		l.b.WriteString(s[l.i:min(end+1, len(s))])
 		l.i = min(end+1, len(s))
-	case next == '_' || next == '@' || next == '*' || next == '#' || next == '?' || next == '!' || next == '$' || next == '-' ||
-		next >= 'a' && next <= 'z' || next >= 'A' && next <= 'Z' || next >= '0' && next <= '9':
+	} else if next == '_' || next == '@' || next == '*' || next == '#' || next == '?' || next == '!' || next == '$' || next == '-' ||
+		next >= 'a' && next <= 'z' || next >= 'A' && next <= 'Z' || next >= '0' && next <= '9' {
 		l.wx = true
 		l.b.WriteByte('$')
 		l.i++
-	default:
+	} else {
 		l.b.WriteByte('$')
 		l.i++
 	}
@@ -662,11 +658,10 @@ func (l *lexer) stepPwsh() {
 	s := l.s
 	r, n := utf8.DecodeRuneInString(s[l.i:])
 	c := s[l.i]
-	switch {
-	case pwshSpace(r):
+	if pwshSpace(r) {
 		l.endWord()
 		l.i += n
-	case c == '`':
+	} else if c == '`' {
 		if strings.HasPrefix(s[l.i:], "`\n") {
 			l.i += 2
 		} else if strings.HasPrefix(s[l.i:], "`\r\n") {
@@ -679,18 +674,19 @@ func (l *lexer) stepPwsh() {
 		} else {
 			l.i++
 		}
-	case pwshQuote(r) == 1:
+	} else if pwshQuote(r) == 1 {
 		l.startWord()
 		l.wq = true
 		l.i += n
 		l.singlePwsh()
-	case pwshQuote(r) == 2:
+	} else if pwshQuote(r) == 2 {
 		l.startWord()
 		l.wq = true
 		l.i += n
 		l.doublePwsh()
-	case c == '@' && !l.inWord && l.hereString():
-	case c == '$' || c == '@':
+	} else if c == '@' && !l.inWord && l.hereString() {
+		// hereString read it.
+	} else if c == '$' || c == '@' {
 		l.startWord()
 		if l.i+1 < len(s) && (s[l.i+1] == '(' || s[l.i+1] == '{') {
 			l.i++
@@ -701,26 +697,26 @@ func (l *lexer) stepPwsh() {
 			l.wx = true
 		}
 		l.appendRune()
-	case c == '(' || c == '{':
+	} else if c == '(' || c == '{' {
 		l.startWord()
 		l.group()
-	case c == ')' || c == '}':
+	} else if c == ')' || c == '}' {
 		l.sep(1)
-	case c == '\n' || c == '\r':
+	} else if c == '\n' || c == '\r' {
 		if strings.HasPrefix(s[l.i:], "\r\n") {
 			l.sep(2)
 		} else {
 			l.sep(1)
 		}
-	case c == ';':
+	} else if c == ';' {
 		l.sep(1)
-	case c == '|':
+	} else if c == '|' {
 		if strings.HasPrefix(s[l.i:], "||") {
 			l.sep(2)
 		} else {
 			l.sep(1)
 		}
-	case c == '&':
+	} else if c == '&' {
 		if strings.HasPrefix(s[l.i:], "&&") {
 			l.sep(2)
 		} else if !l.inWord && len(l.cur.words) == 0 {
@@ -731,7 +727,7 @@ func (l *lexer) stepPwsh() {
 		} else {
 			l.sep(1)
 		}
-	case c == '>':
+	} else if c == '>' {
 		l.fdPrefix()
 		l.i++
 		if l.i < len(s) && s[l.i] == '>' {
@@ -743,7 +739,7 @@ func (l *lexer) stepPwsh() {
 		} else {
 			l.op = opWrite
 		}
-	case c == '<' && strings.HasPrefix(s[l.i:], "<#") && !l.inWord:
+	} else if c == '<' && strings.HasPrefix(s[l.i:], "<#") && !l.inWord {
 		end := strings.Index(s[l.i:], "#>")
 		if end < 0 {
 			end = len(s) - l.i
@@ -752,18 +748,18 @@ func (l *lexer) stepPwsh() {
 		}
 		l.ln.comments = append(l.ln.comments, s[l.i:l.i+end])
 		l.i += end
-	case c == '<':
+	} else if c == '<' {
 		l.fdPrefix()
 		l.i++
 		l.op = opRead
-	case c == '#' && !l.inWord:
+	} else if c == '#' && !l.inWord {
 		l.comment()
-	case !l.inWord && (r == '–' || r == '—' || r == '―'):
+	} else if !l.inWord && (r == '–' || r == '—' || r == '―') {
 		// PowerShell reads a dash as a hyphen before a parameter name.
 		l.startWord()
 		l.b.WriteByte('-')
 		l.i += n
-	default:
+	} else {
 		l.startWord()
 		l.appendRune()
 	}
@@ -808,8 +804,7 @@ func (l *lexer) doublePwsh() {
 	s := l.s
 	for l.i < len(s) {
 		r, n := utf8.DecodeRuneInString(s[l.i:])
-		switch {
-		case pwshQuote(r) == 2:
+		if pwshQuote(r) == 2 {
 			if r2, n2 := utf8.DecodeRuneInString(s[l.i+n:]); l.i+n < len(s) && pwshQuote(r2) == 2 {
 				l.b.WriteByte('"')
 				l.i += n + n2
@@ -817,20 +812,20 @@ func (l *lexer) doublePwsh() {
 			}
 			l.i += n
 			return
-		case r == '`' && l.i+1 < len(s):
+		} else if r == '`' && l.i+1 < len(s) {
 			l.i++
 			l.appendRune()
-		case r == '$' && l.i+1 < len(s) && s[l.i+1] == '(':
+		} else if r == '$' && l.i+1 < len(s) && s[l.i+1] == '(' {
 			l.wx = true
 			start := l.i
 			sub, next := l.nested(l.i+2, ')')
 			l.b.WriteString(s[start:next])
 			l.wsubs = append(l.wsubs, sub)
 			l.i = next
-		case r == '$':
+		} else if r == '$' {
 			l.wx = true
 			l.appendRune()
-		default:
+		} else {
 			l.appendRune()
 		}
 	}

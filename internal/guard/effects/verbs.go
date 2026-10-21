@@ -144,8 +144,7 @@ func effectsOf(ws []string, sh Shell) (writes, whole []string, push bool, code [
 		return
 	}
 	n, args := name(ws[h]), ws[h+1:]
-	switch {
-	case n == "git":
+	if n == "git" {
 		k := gitSubcommand(args)
 		for j := 0; j+1 < len(args) && (k < 0 || j < k); j++ {
 			// git -c alias.x='!cmd' and git -c core.pager=cmd run cmd.
@@ -179,7 +178,7 @@ func effectsOf(ws []string, sh Shell) (writes, whole []string, push bool, code [
 				}
 			}
 		}
-	case n == "gh":
+	} else if n == "gh" {
 		var pos []string
 		for _, a := range args {
 			if !strings.HasPrefix(a, "-") {
@@ -187,22 +186,22 @@ func effectsOf(ws []string, sh Shell) (writes, whole []string, push bool, code [
 			}
 		}
 		push = len(pos) >= 2 && pos[0] == "pr" && pos[1] == "create"
-	case n == "sed" || n == "perl":
+	} else if n == "sed" || n == "perl" {
 		for _, a := range args {
 			if strings.HasPrefix(a, "--in-place") && n == "sed" || len(a) > 1 && a[0] == '-' && a[1] != '-' && inPlace(a[1:]) {
 				writes = append(writes, args...)
 				break
 			}
 		}
-	case n == "dd":
+	} else if n == "dd" {
 		for _, a := range args {
 			if v, ok := strings.CutPrefix(a, "of="); ok {
 				writes = append(writes, v)
 			}
 		}
-	case n == "find":
+	} else if n == "find" {
 		writes, whole, cmds = find(args, writes)
-	case shells[n]:
+	} else if shells[n] {
 		dashC := false
 		for j, a := range args {
 			if a == "--" {
@@ -217,7 +216,7 @@ func effectsOf(ws []string, sh Shell) (writes, whole []string, push bool, code [
 				break
 			}
 		}
-	case pwshes[n]:
+	} else if pwshes[n] {
 		for j, a := range args {
 			low := strings.ToLower(a)
 			if len(low) >= 2 && (strings.HasPrefix("-command", low) || strings.HasPrefix("/command", low)) {
@@ -225,16 +224,16 @@ func effectsOf(ws []string, sh Shell) (writes, whole []string, push bool, code [
 				break
 			}
 		}
-	case n == "cmd":
+	} else if n == "cmd" {
 		for j, a := range args {
 			if low := strings.ToLower(a); low == "/c" || low == "/k" {
 				code = append(code, nestedCode{strings.Join(args[j+1:], " "), sh})
 				break
 			}
 		}
-	case n == "eval" || n == "watch":
+	} else if n == "eval" || n == "watch" {
 		code = append(code, nestedCode{strings.Join(args, " "), sh})
-	case n == "iex" || n == "invoke-expression":
+	} else if n == "iex" || n == "invoke-expression" {
 		var rest []string
 		for _, a := range args {
 			if !strings.EqualFold(a, "-command") {
@@ -242,7 +241,7 @@ func effectsOf(ws []string, sh Shell) (writes, whole []string, push bool, code [
 			}
 		}
 		code = append(code, nestedCode{strings.Join(rest, " "), PowerShell})
-	case writeVerbs[n]:
+	} else if writeVerbs[n] {
 		ops := operands(args, sh)
 		writes = append(writes, ops...)
 		if dirVerbs[n] {

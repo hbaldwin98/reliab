@@ -182,3 +182,20 @@ func TestRespellingKeepsEffects(t *testing.T) {
 		}
 	})
 }
+
+// knowledge/decisions/hook-decisions-v0.md: a hook that fails lets the
+// command through, and a malformed line must still get a decision. So the
+// reader ends, without a panic, on any text: unbalanced quotes and
+// parentheses, an unterminated heredoc or substitution, stray escapes.
+func TestReadEndsOnAnyLine(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	pieces := []string{"a", " ", "\n", "\r", "\\", "`", "'", "\"", "$", "(", ")", "{", "}", "<", "<<", "<<-", "<<<", ">", ">&", "&", "|", ";", "#", "@'", "'@", "@\"", "\u201c", "\u2018", "\u00a0", "cd ", "rm ", "reliab ", "bash -c ", "EOF", "-", "~"}
+	rapid.Check(t, func(t *rapid.T) {
+		line := strings.Join(rapid.SliceOfN(rapid.SampledFrom(pieces), 0, 40).Draw(t, "line"), "")
+		for _, sh := range []Shell{Bash, PowerShell, Unknown} {
+			e := Read(line, sh, dir)
+			_ = e.Invokes("findings", "ack")
+		}
+	})
+}
