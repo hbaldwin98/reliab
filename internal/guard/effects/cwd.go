@@ -372,7 +372,7 @@ func sepKind(sep string) string {
 func trackable(cmd string, bash bool) bool {
 	low := strings.ToLower(cmd)
 	for _, s := range lineDoubt {
-		if strings.Contains(low, s) && !(bash && s == "<<") {
+		if (!bash || s != "<<") && strings.Contains(low, s) {
 			return false
 		}
 	}
