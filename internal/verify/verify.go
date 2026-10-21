@@ -434,8 +434,6 @@ type changes struct {
 	lines map[string]map[int]bool
 }
 
-// needsBase reports whether a tier's commands use the base: a changed_only
-// command or one that names {base}.
 // profileRel is path as the report records it: slash-separated and
 // relative to root, or absolute when outside it.
 func profileRel(root, path string) string {
@@ -445,6 +443,8 @@ func profileRel(root, path string) string {
 	return filepath.ToSlash(path)
 }
 
+// needsBase reports whether a tier's commands use the base: a changed_only
+// command or one that names {base}.
 func needsBase(p *profile.Profile, ids []string) bool {
 	for _, id := range ids {
 		if c, ok := p.Commands[id]; ok && (c.ChangedOnly || strings.Contains(c.Run, "{base}")) {
