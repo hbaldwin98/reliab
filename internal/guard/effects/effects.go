@@ -11,7 +11,10 @@
 // bash -c or iex) is learnt for writes and invocations alike.
 package effects
 
-import "strings"
+import (
+	"path/filepath"
+	"strings"
+)
 
 // Shell is the language a line is read in.
 type Shell int
@@ -115,10 +118,14 @@ type reader struct {
 func (r *reader) read(l *line, dirs []string, data bool, depth int) {
 	r.place(l, dirs)
 	pwsh := l.sh == PowerShell
+	scripts := scriptsWritten(l)
 	for k, c := range l.cmds {
 		ws := c.texts()
 		writes, whole, push, code, execs := effectsOf(ws, l.sh)
-		writes = append(c.outs, writes...)
+		writes = append(append([]string{}, c.outs...), writes...)
+		if text, ok := runsScript(ws, scripts); ok {
+			code = append(code, nestedCode{text, l.sh})
+		}
 		cmdDirs := union(c.cwds, c.may)
 		if len(ws) > 0 || len(writes) > 0 {
 			r.e.Commands = append(r.e.Commands, Command{Words: ws, Dirs: cmdDirs, Writes: writes, Whole: whole})
@@ -176,6 +183,58 @@ func (r *reader) read(l *line, dirs []string, data bool, depth int) {
 			r.maybeText(t, l.sh, depth)
 		}
 	}
+}
+
+// scriptsWritten returns the text a line's commands write to files, by
+// file: a heredoc or here-string redirected to one, or echo's or printf's
+// words. A shell may run such a file later on the line.
+func scriptsWritten(l *line) map[string]string {
+	var m map[string]string
+	for _, c := range l.cmds {
+		if len(c.outs) == 0 {
+			continue
+		}
+		var texts []string
+		for _, b := range c.bodies {
+			texts = append(texts, b.text)
+		}
+		ws := c.texts()
+		if h := head(ws); len(texts) == 0 && h >= 0 && (name(ws[h]) == "echo" || name(ws[h]) == "printf") {
+			texts = append(texts, strings.Join(ws[h+1:], " "))
+		}
+		if len(texts) == 0 {
+			continue
+		}
+		if m == nil {
+			m = map[string]string{}
+		}
+		for _, out := range c.outs {
+			m[filepath.Clean(filepath.FromSlash(out))] = strings.Join(texts, "\n")
+		}
+	}
+	return m
+}
+
+// runsScript returns the text written earlier on the line to the file a
+// command runs: as a shell's script (bash r.sh), by source or ., or as
+// the command itself (./r.sh).
+func runsScript(ws []string, scripts map[string]string) (string, bool) {
+	h := head(ws)
+	if h < 0 || len(scripts) == 0 {
+		return "", false
+	}
+	file := ws[h]
+	if n := name(ws[h]); shells[n] || pwshes[n] || n == "source" || n == "." {
+		file = ""
+		for _, a := range ws[h+1:] {
+			if !strings.HasPrefix(a, "-") {
+				file = a
+				break
+			}
+		}
+	}
+	text, ok := scripts[filepath.Clean(filepath.FromSlash(file))]
+	return text, ok && file != ""
 }
 
 // readWords collects the effects of a command given as words, as find

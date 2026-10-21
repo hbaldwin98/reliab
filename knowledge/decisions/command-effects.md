@@ -86,7 +86,8 @@ allowed.
    `xargs`, `timeout`, `nice`, `nohup`, `exec`, `command`, PowerShell's
    `&`), by base name (`/bin/rm` is `rm`); a write verb's name as data
    (`grep -rn cp snapshots`, `echo rm x`, `go install`) writes nothing. A
-   heredoc body is data unless a shell reads it. Text a shell may yet run
+   heredoc body is data unless a shell reads it, or the line writes it (or
+   echo's text) to a file it then runs (`bash r.sh`, `. r.sh`, `./r.sh`). Text a shell may yet run
    later (a quoted word holding spaces in a command that is not data, a
    comment, a heredoc body fed to another program) is read for reliab
    invocations only, never for writes or pushes, as `personOnly` read it.

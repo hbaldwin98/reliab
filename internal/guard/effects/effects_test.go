@@ -127,6 +127,13 @@ func TestNestedCode(t *testing.T) {
 		{"cat > notes <<'EOF'\nrm f\nEOF", Bash, []string{"notes"}},
 		{"python - <<'EOF'\nrm f\nEOF", Bash, nil},
 		{"echo 'rm f' | grep rm", Bash, nil},
+		// Text written to a file the line then runs is code: by a shell,
+		// by source, or as the command itself.
+		{"cat > r.sh <<'EOF'\nrm f\nEOF\nbash r.sh", Bash, []string{"f", "r.sh"}},
+		{"echo 'rm f' > r.sh && sh ./r.sh", Bash, []string{"f", "r.sh"}},
+		{"printf 'rm f' > r.sh; chmod +x r.sh; ./r.sh", Bash, []string{"+x", "f", "r.sh"}},
+		{"echo 'rm f' > r.sh && . r.sh", Bash, []string{"f", "r.sh"}},
+		{"echo 'rm f' > r.sh && bash other.sh", Bash, []string{"r.sh"}},
 	}
 	for _, tt := range tests {
 		if got := all(Read(tt.line, tt.sh, t.TempDir()), writes); !slices.Equal(got, tt.write) {
