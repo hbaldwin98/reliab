@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -68,6 +69,48 @@ func TestReleaseArchivesHoldEverything(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), "src: plugin/**/*") {
 		t.Error("the archive does not include the plugin directory")
+	}
+}
+
+// The README's install lines name the released version, the one in
+// plugin.json, so a reader installs the binary the plugin launcher would
+// (README "Install", "Release"). The release order tags the version bump
+// first and updates the README once the release is out, so while plugin.json
+// differs from HEAD's parent (or the parent is not in a shallow clone) the
+// README may still name the previous version.
+func TestReadmeInstallsPluginVersion(t *testing.T) {
+	var p struct{ Version string }
+	readJSON(t, "plugin/.claude-plugin/plugin.json", &p)
+	raw, err := os.ReadFile(filepath.Join(root, "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := map[string]*regexp.Regexp{
+		"install.sh":  regexp.MustCompile(`scripts/install\.sh \| sh -s -- (\S+)`),
+		"install.ps1": regexp.MustCompile(`scripts/install\.ps1\)\)\) -Version (\S+)`),
+	}
+	for name, re := range lines {
+		m := re.FindAllStringSubmatch(string(raw), -1)
+		if len(m) == 0 {
+			t.Errorf("README has no %s install line", name)
+			continue
+		}
+		for _, v := range m {
+			if v[1] == p.Version {
+				continue
+			}
+			bumping := exec.Command("git", "diff", "--quiet", "HEAD~1", "--", "plugin/.claude-plugin/plugin.json")
+			bumping.Dir = root
+			if err := bumping.Run(); err != nil {
+				if exit, ok := err.(*exec.ExitError); ok && exit.ExitCode() == 1 {
+					t.Logf("README %s installs %s while plugin.json moves to %s", name, v[1], p.Version)
+					continue
+				}
+				t.Logf("cannot tell whether plugin.json changed since HEAD~1 (%v); allowing README %s %s", err, name, v[1])
+				continue
+			}
+			t.Errorf("README %s installs %s, plugin.json is %s", name, v[1], p.Version)
+		}
 	}
 }
 
