@@ -30,8 +30,9 @@ func TestLockHelperProcess(t *testing.T) {
 	if dir == "" {
 		t.Skip("helper process for the heavy-run lock tests")
 	}
-	me := holder{PID: os.Getpid(), Repo: "/src/other-repo", Tier: "prepr", StartedAt: "2026-10-20T09:00:00Z"}
-	if _, _, err := acquireHeavy(context.Background(), dir, me, io.Discard, 10*time.Millisecond); err != nil {
+	me := holder{PID: os.Getpid(), Repo: "/src/other-repo", Tier: "prepr"}
+	at := func() time.Time { return time.Date(2026, 10, 20, 9, 0, 0, 0, time.UTC) }
+	if _, _, err := acquireHeavy(context.Background(), dir, me, at, io.Discard, 10*time.Millisecond); err != nil {
 		fmt.Println("error:", err)
 		os.Exit(1)
 	}
@@ -91,7 +92,7 @@ func TestHeavyRunWaitsForAnotherProcessThenTakesOverWhenItDies(t *testing.T) {
 	}
 	done := make(chan result, 1)
 	go func() {
-		release, pid, err := acquireHeavy(context.Background(), dir, holder{PID: os.Getpid(), Repo: "/src/this", Tier: "prepr"}, &log, 10*time.Millisecond)
+		release, pid, err := acquireHeavy(context.Background(), dir, holder{PID: os.Getpid(), Repo: "/src/this", Tier: "prepr"}, time.Now, &log, 10*time.Millisecond)
 		done <- result{release, pid, err}
 	}()
 	select {
@@ -123,12 +124,58 @@ func TestHeavyRunWaitsForAnotherProcessThenTakesOverWhenItDies(t *testing.T) {
 	}
 }
 
+// The record a waiter reads says when its holder took the lock, not when
+// it began to wait: heavy-run-lock.md has a person judge a hung holder by
+// that time, so a run that queued must not look older than it is.
+func TestLockRecordsWhenItWasTakenNotWhenTheWaitBegan(t *testing.T) {
+	dir := t.TempDir()
+	other := holdInOtherProcess(t, dir)
+	queued := time.Date(2026, 10, 20, 9, 0, 0, 0, time.UTC)
+	taken := queued.Add(time.Hour)
+	var mu sync.Mutex
+	clock := queued
+	now := func() time.Time { mu.Lock(); defer mu.Unlock(); return clock }
+
+	done := make(chan error, 1)
+	go func() {
+		release, _, err := acquireHeavy(context.Background(), dir, holder{PID: os.Getpid(), Repo: "/src/this", Tier: "prepr"}, now, io.Discard, 10*time.Millisecond)
+		if err == nil {
+			t.Cleanup(release)
+		}
+		done <- err
+	}()
+	time.Sleep(100 * time.Millisecond)
+	mu.Lock()
+	clock = taken
+	mu.Unlock()
+	if err := other.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("still waiting after the holder died")
+	}
+	f, err := os.Open(dir + "/heavy.lock")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	h, known := readHolder(f)
+	if want := taken.Format(time.RFC3339); !known || h.StartedAt != want {
+		t.Errorf("holder = %+v (known %v), want startedAt %s, when the lock was taken", h, known, want)
+	}
+}
+
 func TestHeavyRunWaitEndsWithItsContext(t *testing.T) {
 	dir := t.TempDir()
 	holdInOtherProcess(t, dir)
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	if _, _, err := acquireHeavy(ctx, dir, holder{PID: os.Getpid()}, io.Discard, 10*time.Millisecond); !errors.Is(err, context.DeadlineExceeded) {
+	if _, _, err := acquireHeavy(ctx, dir, holder{PID: os.Getpid()}, time.Now, io.Discard, 10*time.Millisecond); !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("err = %v, want the context's", err)
 	}
 }
@@ -141,7 +188,7 @@ func TestRunStartedByTheHolderDoesNotWait(t *testing.T) {
 	t.Setenv(lockEnv, strconv.Itoa(other.Process.Pid))
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	release, pid, err := acquireHeavy(ctx, dir, holder{PID: os.Getpid()}, io.Discard, 10*time.Millisecond)
+	release, pid, err := acquireHeavy(ctx, dir, holder{PID: os.Getpid()}, time.Now, io.Discard, 10*time.Millisecond)
 	if err != nil || pid != other.Process.Pid {
 		t.Fatalf("pid %d, err %v; want to go ahead under pid %d", pid, err, other.Process.Pid)
 	}
@@ -154,11 +201,11 @@ func TestRunsInOneProcessShareTheLock(t *testing.T) {
 	dir := t.TempDir()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	first, _, err := acquireHeavy(ctx, dir, holder{PID: os.Getpid()}, io.Discard, 10*time.Millisecond)
+	first, _, err := acquireHeavy(ctx, dir, holder{PID: os.Getpid()}, time.Now, io.Discard, 10*time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, pid, err := acquireHeavy(ctx, dir, holder{PID: os.Getpid()}, io.Discard, 10*time.Millisecond)
+	second, pid, err := acquireHeavy(ctx, dir, holder{PID: os.Getpid()}, time.Now, io.Discard, 10*time.Millisecond)
 	if err != nil || pid != os.Getpid() {
 		t.Fatalf("second run in the process: pid %d, %v", pid, err)
 	}
@@ -177,7 +224,7 @@ func TestRunsInOneProcessShareTheLock(t *testing.T) {
 	}
 	second()
 	// The last release frees it for anyone.
-	third, _, err := acquireHeavy(ctx, dir, holder{PID: os.Getpid()}, io.Discard, 10*time.Millisecond)
+	third, _, err := acquireHeavy(ctx, dir, holder{PID: os.Getpid()}, time.Now, io.Discard, 10*time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -146,8 +146,8 @@ func Run(ctx context.Context, opt Options) (*report.Report, string, error) {
 	// One heavy run per machine; the wait is not part of the budget.
 	var lockHeld string
 	if dir := lockDir(opt); dir != "" && heavy(tier.Name, len(opt.Only) > 0, tier.Run) {
-		me := holder{PID: os.Getpid(), Repo: opt.Root, Tier: reportTier, StartedAt: report.Now(opt.Now())}
-		release, pid, err := acquireHeavy(ctx, dir, me, opt.Log, lockPoll)
+		me := holder{PID: os.Getpid(), Repo: opt.Root, Tier: reportTier}
+		release, pid, err := acquireHeavy(ctx, dir, me, opt.Now, opt.Log, lockPoll)
 		if err != nil {
 			return nil, "", fmt.Errorf("heavy-run lock: %w", err)
 		}

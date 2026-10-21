@@ -32,7 +32,9 @@ same counts each time.
 - **The lock** is a file, `heavy.lock` in `reliab` under the user cache
   directory (`os.UserCacheDir`), locked with the operating system's file
   lock (`flock`; `LockFileEx` on Windows) and holding a record of its
-  holder: pid, repository, tier, and start time. The operating system
+  holder: pid, repository, tier, and the time it took the lock (not the
+  time it began waiting, so a run that queued does not look hung to the
+  next waiter). The operating system
   frees the lock when its holder exits, killed or crashed included, so a
   dead holder is taken over at the next try with nothing to clear by hand
   and no pid that a new process could reuse.

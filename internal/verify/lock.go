@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/hbaldwin98/reliab/internal/mutscore"
+	"github.com/hbaldwin98/reliab/internal/report"
 )
 
 // One heavy run per machine (knowledge/decisions/heavy-run-lock.md): two
@@ -83,11 +84,13 @@ type hold struct {
 
 // acquireHeavy takes the heavy-run lock in dir and returns the function
 // that releases it, and the pid of the process holding it, which the run
-// passes to its commands as lockEnv. It waits while another process holds it, writing to
+// passes to its commands as lockEnv. The lock file records me, stamped
+// with now() when the lock is taken, not when the wait began: a waiter
+// reads that time to judge whether the holder is hung. It waits while another process holds it, writing to
 // log who that is, once per holder, and returns ctx's error if ctx ends
 // first. It proceeds without waiting when this process already holds it,
 // or when the holder is the run whose command started this one (lockEnv).
-func acquireHeavy(ctx context.Context, dir string, me holder, log io.Writer, poll time.Duration) (func(), int, error) {
+func acquireHeavy(ctx context.Context, dir string, me holder, now func() time.Time, log io.Writer, poll time.Duration) (func(), int, error) {
 	release := func() {
 		inProcess.Lock()
 		defer inProcess.Unlock()
@@ -120,6 +123,7 @@ func acquireHeavy(ctx context.Context, dir string, me holder, log io.Writer, pol
 		}
 		ok, err := tryLock(f)
 		if ok {
+			me.StartedAt = report.Now(now())
 			if b, err := json.Marshal(me); err == nil {
 				_ = f.Truncate(0)
 				_, _ = f.WriteAt(b, 0)
