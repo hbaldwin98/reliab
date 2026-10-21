@@ -167,6 +167,7 @@ func Run(ctx context.Context, opt Options) (*report.Report, string, error) {
 			Tests:         tests,
 			MutationTests: mutationTests,
 			Profile:       prof.Name,
+			ProfilePath:   profileRel(opt.Root, profPath),
 			StartedAt:     report.Now(start),
 			BudgetSec:     tier.BudgetSeconds,
 			Complete:      true,
@@ -431,6 +432,15 @@ func hasMeta(p string) bool { return strings.ContainsAny(p, "*?[{") }
 type changes struct {
 	base  string
 	lines map[string]map[int]bool
+}
+
+// profileRel is path as the report records it: slash-separated and
+// relative to root, or absolute when outside it.
+func profileRel(root, path string) string {
+	if rel, err := filepath.Rel(root, path); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return filepath.ToSlash(rel)
+	}
+	return filepath.ToSlash(path)
 }
 
 // needsBase reports whether a tier's commands use the base: a changed_only

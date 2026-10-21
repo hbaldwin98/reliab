@@ -438,3 +438,17 @@ func TestIntegrationTestsRunFromPrepr(t *testing.T) {
 		}
 	}
 }
+
+// knowledge/decisions/report-profile-path.md: verify records the profile
+// file slash-separated and relative to the repo root, absolute when outside
+// it.
+func TestProfileRel(t *testing.T) {
+	root := t.TempDir()
+	if got := profileRel(root, filepath.Join(root, "ci", "alt.yaml")); got != "ci/alt.yaml" {
+		t.Errorf("inside the root: %q, want ci/alt.yaml", got)
+	}
+	out := filepath.Join(t.TempDir(), "alt.yaml")
+	if got := profileRel(root, out); got != filepath.ToSlash(out) {
+		t.Errorf("outside the root: %q, want %q", got, filepath.ToSlash(out))
+	}
+}

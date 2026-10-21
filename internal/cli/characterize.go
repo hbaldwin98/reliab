@@ -101,7 +101,12 @@ func newCharacterizeCmd() *cobra.Command {
 				return withCode(ExitFindings, fmt.Errorf("%d difference(s) from the capture; run reliab report route", open))
 			}
 			if !rep.Run.Complete {
-				return withCode(ExitIncomplete, fmt.Errorf("incomplete: the %s budget ran out", tier))
+				why := incompleteWhy(rep, tier)
+				if len(rep.NeedsInput()) > 0 {
+					// characterize has no --tests flag to name them with.
+					why += "; characterize names no tests, so its command must not need them"
+				}
+				return withCode(ExitIncomplete, fmt.Errorf("incomplete: %s", why))
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), "no differences from the capture")
 			return nil

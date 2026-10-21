@@ -29,8 +29,13 @@ var Formats = []string{"markdown", "json"}
 // Summary is what the report says, arranged for a reviewer. Its JSON form
 // is the --format json output.
 type Summary struct {
-	Tier          string  `json:"tier"`
-	Profile       string  `json:"profile"`
+	Tier    string `json:"tier"`
+	Profile string `json:"profile"`
+	// ProfilePath is the profile file the run loaded; JudgedBy is the one
+	// this summary judged it by, the default unless the default protects
+	// ProfilePath (knowledge/decisions/report-profile-path.md).
+	ProfilePath   string  `json:"profilePath,omitempty"`
+	JudgedBy      string  `json:"judgedBy,omitempty"`
 	Tool          string  `json:"tool"`
 	StartedAt     string  `json:"startedAt"`
 	ElapsedSec    float64 `json:"elapsedSec"`
@@ -211,10 +216,19 @@ func Build(opt Options) (*Summary, error) {
 	if s.Skipped == nil {
 		s.Skipped = []report.Skip{}
 	}
-	s.VerdictCurrent = r.Verdict != nil && r.Verdict.TreeHash == r.Run.TreeHash
+	s.VerdictCurrent = r.VerdictCurrent()
 
+	// The report is judged by the profile it ran with when the default
+	// profile protects that file; protected paths always come from the
+	// default profile (protected-path-approval.md, report-profile-path.md).
 	profileBase := ""
-	prof, err := profile.Load(filepath.Join(opt.Root, profile.DefaultPath))
+	s.ProfilePath = r.Run.ProfilePath
+	prof, judgedBy, err := r.JudgeProfile(opt.Root)
+	s.JudgedBy = judgedBy
+	protProf := prof
+	if judgedBy != profile.DefaultPath {
+		protProf, _ = profile.Load(filepath.Join(opt.Root, profile.DefaultPath))
+	}
 	if err != nil {
 		s.FreshError = err.Error()
 	} else {
@@ -256,7 +270,7 @@ func Build(opt Options) (*Summary, error) {
 		}
 	}
 	earlier(opt, profileBase, r, s)
-	protectedChanges(opt.Root, prof, s)
+	protectedChanges(opt.Root, protProf, s)
 	return s, nil
 }
 
@@ -319,29 +333,11 @@ func notInTier(p *profile.Profile, r *report.Report) []string {
 // the current HEAD, started before this report. For each finding id the
 // latest such run wins.
 func earlier(opt Options, profileBase string, r *report.Report, s *Summary) {
-	base, err := gitx.ResolveBase(opt.Root, opt.Base, profileBase)
+	runs, base, err := report.BranchHistory(opt.Root, opt.Base, profileBase, started(r))
+	s.Base = base
 	if err != nil {
 		s.BaseError = err.Error()
 		return
-	}
-	s.Base = base
-	mb, err := gitx.MergeBase(opt.Root, base)
-	if err != nil {
-		s.BaseError = fmt.Sprintf("no merge base with %s: %v", base, err)
-		return
-	}
-	head := gitx.Head(opt.Root)
-	onBranch := map[string]bool{}
-	inBranch := func(h string) bool {
-		if h == "" {
-			return false
-		}
-		if v, ok := onBranch[h]; ok {
-			return v
-		}
-		v := gitx.IsAncestor(opt.Root, mb, h) && gitx.IsAncestor(opt.Root, h, head)
-		onBranch[h] = v
-		return v
 	}
 	now := map[string]bool{}
 	for _, f := range r.Findings {
@@ -353,15 +349,9 @@ func earlier(opt Options, profileBase string, r *report.Report, s *Summary) {
 	}
 	last := map[string]Item{}
 	var order []string
-	for _, h := range report.History(opt.Root) {
-		// Later runs do not count. This report is in the history too, but
-		// its findings are all current, so it adds nothing.
-		if started(h).After(started(r)) {
-			continue
-		}
-		if !inBranch(h.Run.Head) {
-			continue
-		}
+	// This report is in the history too, but its findings are all current,
+	// so it adds nothing.
+	for _, h := range runs {
 		for _, f := range h.Findings {
 			if now[f.ID] {
 				continue
@@ -422,6 +412,13 @@ func Markdown(s *Summary) string {
 	}
 	p("- Run: %s tier, profile `%s`, %s, started %s, %.1fs of a %s budget, %s.\n",
 		s.Tier, s.Profile, s.Tool, s.StartedAt, s.ElapsedSec, budget(s.BudgetSec), complete)
+	if s.ProfilePath != "" && s.ProfilePath != profile.DefaultPath {
+		p("- Profile file `%s`; judged by `%s`", s.ProfilePath, s.JudgedBy)
+		if s.JudgedBy != s.ProfilePath {
+			p(", since `%s` does not protect it", profile.DefaultPath)
+		}
+		p(".\n")
+	}
 	at := ""
 	if s.Head != "" {
 		at = fmt.Sprintf(" at commit `%s`", short(s.Head))

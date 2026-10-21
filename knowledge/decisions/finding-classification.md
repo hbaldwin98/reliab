@@ -26,7 +26,18 @@ findings bookkeeping that would hold the classification is deferred from v0.
   ([report-storage](/decisions/report-storage.md)). A finding fixed before
   it was classified is in no latest report; `classify` then records it on
   the newest history report that holds it (added 2026-10-18), so the PR
-  summary's fixed list shows its kind and reason.
+  summary's fixed list shows its kind and reason. That report is chosen
+  among this branch's runs, the ones the summary reads (runs whose head
+  lies between the merge base and HEAD,
+  [pr-evidence-summary](/decisions/pr-evidence-summary.md)), by the same
+  code (added 2026-10-20): `.reliab/` is shared by every branch of a
+  checkout, and a later run of the same id on another branch had taken the
+  classification where the summary never looks, so the fixed finding
+  showed no kind or reason. Unlike the summary, `classify` sets no
+  started-before limit, since the summary it serves is usually of a pre-PR
+  run still to come. With no run of this branch holding the id, or no base
+  to tell the branch by, the newest run that holds it gets the kind, so it
+  is still on record.
 - Hooks treat `unclassified` and `new-code-defect` as blocking.
   `characterization-diff`, `legacy-defect-or-quirk`, `equivalent-mutant`,
   `requirement-silent`, and `environment` block until a human acknowledges

@@ -14,11 +14,12 @@ import (
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
+	"github.com/hbaldwin98/reliab/internal/profile"
 	"github.com/hbaldwin98/reliab/schemas"
 )
 
 // SchemaVersion is the report schema version this build writes.
-const SchemaVersion = "0.11.0"
+const SchemaVersion = "0.12.0"
 
 // Dir is where reports live, relative to the repo root. Only reliab writes
 // here; see knowledge/decisions/report-storage.md.
@@ -73,7 +74,8 @@ type Run struct {
 	Scope         []string        `json:"scope,omitempty"`
 	Tests         []string        `json:"tests,omitempty"`         // verify --tests, as given
 	MutationTests []string        `json:"mutationTests,omitempty"` // verify --mutation-tests, as given
-	Profile       string          `json:"profile"`
+	Profile       string          `json:"profile"`                 // the profile's name
+	ProfilePath   string          `json:"profilePath,omitempty"`   // the file verify loaded; see ProfileFile
 	StartedAt     string          `json:"startedAt"`
 	ElapsedSec    float64         `json:"elapsedSec"`
 	BudgetSec     int             `json:"budgetSec"`
@@ -263,6 +265,53 @@ type Verdict struct {
 	TreeHash       string `json:"treeHash,omitempty"`
 	Head           string `json:"head,omitempty"`
 	RerunStartedAt string `json:"rerunStartedAt,omitempty"`
+}
+
+// ProfileFile returns the path under root of the profile r's run loaded,
+// or of fallback for a report that does not record one. Commands that judge
+// a report against its thresholds, tiers, and freshness excludes read this
+// profile, so a run with verify -f is judged by the file it ran with.
+// Protection does not: protected paths and approvals always come from the
+// default profile (knowledge/decisions/protected-path-approval.md).
+func (r *Report) ProfileFile(root, fallback string) string {
+	p := fallback
+	if r.Run.ProfilePath != "" {
+		p = filepath.FromSlash(r.Run.ProfilePath)
+	}
+	if filepath.IsAbs(p) {
+		return p
+	}
+	return filepath.Join(root, p)
+}
+
+// JudgeProfile loads the profile that judges r: its thresholds, tiers,
+// baseline, and freshness excludes. That is the file r's run loaded when it
+// is the default profile or a path the default profile protects, so a
+// change to it needs a person's approval; otherwise it is the default
+// profile. A file an agent wrote must not lower a threshold, skip the
+// baseline, or drop product code from the tree hash
+// (knowledge/decisions/report-profile-path.md). path is the file loaded,
+// relative to root unless outside it.
+func (r *Report) JudgeProfile(root string) (p *profile.Profile, path string, err error) {
+	def := filepath.Join(root, profile.DefaultPath)
+	dp, err := profile.Load(def)
+	if err != nil {
+		return nil, profile.DefaultPath, err
+	}
+	alt := r.ProfileFile(root, profile.DefaultPath)
+	rel := r.Run.ProfilePath
+	if alt == def || filepath.IsAbs(filepath.FromSlash(rel)) || !profile.Protects(dp, rel) {
+		return dp, profile.DefaultPath, nil
+	}
+	p, err = profile.Load(alt)
+	return p, rel, err
+}
+
+// VerdictCurrent reports whether r carries a verdict recorded on r's own
+// tree. A verdict is bound to the tree it re-ran, so any other tree voids it
+// (knowledge/decisions/reviewer-verdict.md).
+func (r *Report) VerdictCurrent() bool {
+	return r.Verdict != nil && r.Verdict.TreeHash == r.Run.TreeHash
 }
 
 // NeedsInput returns the skips that wait for tests to be named.

@@ -31,9 +31,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/hbaldwin98/reliab/internal/adapters"
 	"github.com/hbaldwin98/reliab/pkg/findings"
 	"github.com/hbaldwin98/reliab/pkg/snapdiff"
+	"github.com/hbaldwin98/reliab/pkg/testresults"
 )
 
 func main() {
@@ -72,7 +72,7 @@ func run(exit int, junit, root, pending, out string) error {
 	if err != nil {
 		return fmt.Errorf("the run exited %d without a JUnit report: %w", exit, err)
 	}
-	fails, err := adapters.ParseJUnit(raw)
+	fails, err := testresults.ParseJUnit(raw)
 	if err != nil {
 		return fmt.Errorf("%s: %w", junit, err)
 	}

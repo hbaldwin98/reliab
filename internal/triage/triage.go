@@ -31,7 +31,8 @@ var ClassifiableKinds = report.AssignableKinds
 //
 // A finding no latest report holds was fixed before it was classified. R4
 // still wants its kind on record, so Classify then updates the newest
-// history report that holds it, the run the PR summary's fixed list reads,
+// history report of this branch that holds it, the run the PR summary's
+// fixed list reads,
 // and clears the verdict on the latest pre-PR report, which the summary
 // renders that list beside.
 func Classify(root, id, kind, reason string, now time.Time) ([]string, error) {
@@ -65,41 +66,80 @@ func Classify(root, id, kind, reason string, now time.Time) ([]string, error) {
 	return classifyFixed(root, id, change, fmt.Errorf("%w, nor in history", err))
 }
 
-// classifyFixed applies change to the newest history report that holds id,
-// or returns notFound when none does.
+// classifyFixed applies change to the history report the PR summary reads
+// id from, or returns notFound when no history report holds it. That is
+// the newest run of this branch that holds id
+// (report.BranchHistory). With no run of this branch holding it, or no
+// base to tell the branch by, it is the newest run that does, so the kind
+// is still on record.
+//
+// The summary also leaves out runs that started after the report it
+// summarizes; classify does not, since the summary it serves is usually of
+// a pre-PR run still to come, which starts after every run there is now.
 func classifyFixed(root, id string, change func(*report.Finding) error, notFound error) ([]string, error) {
-	hist := report.History(root)
-	for i := len(hist) - 1; i >= 0; i-- {
-		r := hist[i]
-		hit := false
-		for j := range r.Findings {
-			if r.Findings[j].ID != id {
-				continue
+	holds := func(r *report.Report) bool {
+		for _, f := range r.Findings {
+			if f.ID == id {
+				return true
 			}
-			if err := change(&r.Findings[j]); err != nil {
-				return nil, err
-			}
-			hit = true
 		}
-		if !hit {
+		return false
+	}
+	newest := func(runs []*report.Report) *report.Report {
+		for i := len(runs) - 1; i >= 0; i-- {
+			if holds(runs[i]) {
+				return runs[i]
+			}
+		}
+		return nil
+	}
+	branch, _, _ := report.BranchHistory(root, "", profileBase(root), time.Time{})
+	r := newest(branch)
+	if r == nil {
+		r = newest(report.History(root))
+	}
+	if r == nil {
+		return nil, notFound
+	}
+	for j := range r.Findings {
+		if r.Findings[j].ID != id {
 			continue
 		}
-		var stale error
-		if err := rescore(root, r); err != nil {
-			stale = &NotRescored{Reasons: []string{"history: " + err.Error()}}
-		}
-		if err := report.RewriteHistory(root, r); err != nil {
+		if err := change(&r.Findings[j]); err != nil {
 			return nil, err
 		}
-		if latest, err := report.Read(report.LatestPath(root, "prepr")); err == nil && latest.Verdict != nil {
-			latest.Verdict = nil
-			if err := report.Rewrite(root, latest); err != nil {
-				return nil, err
-			}
-		}
-		return []string{fmt.Sprintf("history %s %s", r.Run.Tier, r.Run.StartedAt)}, stale
 	}
-	return nil, notFound
+	var stale error
+	if err := rescore(root, r); err != nil {
+		stale = &NotRescored{Reasons: []string{"history: " + err.Error()}}
+	}
+	if err := report.RewriteHistory(root, r); err != nil {
+		return nil, err
+	}
+	if latest, err := report.Read(report.LatestPath(root, "prepr")); err == nil && latest.Verdict != nil {
+		latest.Verdict = nil
+		if err := report.Rewrite(root, latest); err != nil {
+			return nil, err
+		}
+	}
+	return []string{fmt.Sprintf("history %s %s", r.Run.Tier, r.Run.StartedAt)}, stale
+}
+
+// profileBase is the base ref of the profile the latest pre-PR report ran
+// with, as the summary of it reads it, or "" when it names none or cannot
+// be read.
+func profileBase(root string) string {
+	var p *profile.Profile
+	var err error
+	if r, rerr := report.Read(report.LatestPath(root, "prepr")); rerr == nil {
+		p, _, err = r.JudgeProfile(root)
+	} else {
+		p, err = profile.Load(filepath.Join(root, profile.DefaultPath))
+	}
+	if err != nil {
+		return ""
+	}
+	return p.Base
 }
 
 // Acknowledge records that a person has decided a human-kind finding. Hooks
@@ -183,7 +223,7 @@ func rescore(root string, r *report.Report) error {
 	if !scored {
 		return nil
 	}
-	p, err := profile.Load(filepath.Join(root, profile.DefaultPath))
+	p, _, err := r.JudgeProfile(root)
 	if err != nil {
 		return err
 	}

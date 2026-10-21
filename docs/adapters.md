@@ -116,7 +116,9 @@ These keep adapters agreeing with reliab, from any language:
 - `reliab snapdiff [--json] <accepted> <pending>`: the label for a changed
   snapshot.
 - Go adapters can import `github.com/hbaldwin98/reliab/pkg/findings`
-  (writes the file, the mutant keys, the counts) and `pkg/snapdiff`.
+  (writes the file, the mutant keys, the counts), `pkg/snapdiff`, and
+  `pkg/testresults` (the failing tests in a JUnit or TRX report, read as
+  `reliab verify` reads them).
 - `reliab verify` puts its own directory first on PATH for profile
   commands, so the adapters reliab ships (`reliab-adapter-cargo-mutants`,
   `-golangci-lint`, `-gremlins`, `-insta`, `-verify`) and `reliab` itself are always found.

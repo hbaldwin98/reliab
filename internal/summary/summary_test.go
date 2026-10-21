@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -322,6 +323,54 @@ func TestFixedClassificationAndProtectedQuestion(t *testing.T) {
 	}
 }
 
+// knowledge/decisions/pr-evidence-summary.md: a fixed finding shows the kind
+// and reason it was classified with; finding-classification.md: classify
+// records the kind of a finding fixed before it was classified, so the PR
+// summary has it. .reliab/ is shared by every branch of a checkout, so a
+// later run of the same finding on another branch must not take the
+// classification away from the run this branch's summary reads.
+func TestClassifyAfterFixReachesSummaryAcrossBranches(t *testing.T) {
+	root := testrepo.New(t, "commands:\n  unit: test -f src/fixed || { echo want 2s; exit 1; }\ntiers:\n  prepr: { run: [unit] }\n")
+	commit := func(msg string) {
+		t.Helper()
+		testrepo.Git(t, root, "add", "-A")
+		testrepo.Git(t, root, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qm", msg)
+	}
+	start := time.Date(2036, 10, 18, 9, 0, 0, 0, time.UTC)
+	prepr := func(m int) {
+		t.Helper()
+		at := start.Add(time.Duration(m) * time.Minute)
+		opt := verify.Options{Root: root, Profile: "reliability-profile.yaml", Tier: "prepr", Now: func() time.Time { return at }}
+		if _, _, err := verify.Run(context.Background(), opt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	testrepo.Git(t, root, "checkout", "-q", "-b", "feature")
+	testrepo.Write(t, root, "src/feature.txt", "feature work")
+	commit("feature")
+	prepr(1)
+	// Another branch in the same checkout runs later and sees the same id.
+	testrepo.Git(t, root, "checkout", "-q", "-b", "other", "main")
+	testrepo.Write(t, root, "src/other.txt", "other work")
+	commit("other")
+	prepr(2)
+	testrepo.Git(t, root, "checkout", "-q", "feature")
+	testrepo.Write(t, root, "src/fixed", "")
+	commit("fix")
+	prepr(3)
+
+	if _, err := triage.Classify(root, "F-unit", report.KindNewCodeDefect, "retry waits 1s, the ticket says 2s", start); err != nil {
+		t.Fatal(err)
+	}
+	s := build(t, root)
+	if len(s.Fixed) != 1 || s.Fixed[0].Kind != report.KindNewCodeDefect || s.Fixed[0].Reason != "retry waits 1s, the ticket says 2s" {
+		t.Errorf("fixed = %+v, want F-unit with its classification", s.Fixed)
+	}
+	if md := Markdown(s); !strings.Contains(md, "| `F-unit` | new-code-defect | command unit |") {
+		t.Errorf("markdown lacks the classified fixed finding:\n%s", md)
+	}
+}
+
 // knowledge/decisions/protected-path-approval.md: the profile guards its own
 // threshold, relevance rules, and baseline, so a branch that edits it, even
 // to drop its own protection, has a question for a human.
@@ -387,5 +436,55 @@ func TestNamedTestsAndNeedsInput(t *testing.T) {
 	}
 	if md := Markdown(s); strings.Contains(md, "- Tests named") || !strings.Contains(md, "- Mutation tests named (`--mutation-tests`): `Ns.A`.") {
 		t.Errorf("mutation tests named, tests not:\n%s", md)
+	}
+}
+
+// knowledge/decisions/report-profile-path.md: the summary names the
+// profile file the run loaded and the one it judged by, a file the default
+// profile protects judges its own report, and the list of protected-path
+// changes always reads the default profile (protected-path-approval.md).
+func TestSummaryNamesTheProfileFile(t *testing.T) {
+	root := testrepo.New(t, "protected_paths: [\"snapshots/**\", \"alt.yaml\"]\ncommands:\n  build: \"true\"\n")
+	second := "schemaVersion: 0.1.0\nname: alt\nstarting_condition: greenfield\n" +
+		"paths: { product: [\"src/**\"], tests: [\"test/**\"], ignore: [\"docs/**\"] }\n" + testrepo.Roles +
+		"commands:\n  build: \"true\"\ntiers:\n  prepr: { run: [build] }\n"
+	testrepo.Write(t, root, "alt.yaml", second)
+	testrepo.Git(t, root, "add", "alt.yaml")
+	testrepo.Git(t, root, "commit", "-qm", "alt profile")
+	testrepo.Git(t, root, "checkout", "-q", "-b", "feature")
+	testrepo.Write(t, root, "snapshots/s.txt", "changed")
+	testrepo.Write(t, root, "other.yaml", second)
+	// The branch's default profile protects notes/ too; alt.yaml protects
+	// nothing.
+	def, err := os.ReadFile(filepath.Join(root, "reliability-profile.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	testrepo.Write(t, root, "reliability-profile.yaml", strings.Replace(string(def), "\"alt.yaml\"]", "\"alt.yaml\", \"notes/**\"]", 1))
+	testrepo.Write(t, root, "notes/n.txt", "a note")
+	prepr := func(prof string) *Summary {
+		t.Helper()
+		if _, _, err := verify.Run(context.Background(), verify.Options{Root: root, Profile: prof, Tier: "prepr"}); err != nil {
+			t.Fatal(err)
+		}
+		return build(t, root)
+	}
+
+	s := prepr("alt.yaml")
+	md := Markdown(s)
+	if !strings.Contains(md, "- Profile file `alt.yaml`; judged by `alt.yaml`.\n") {
+		t.Errorf("markdown does not name the protected profile file as its judge:\n%s", md)
+	}
+	protected := map[string]bool{}
+	for _, c := range s.Protected {
+		protected[c.Path] = true
+	}
+	if !protected["snapshots/s.txt"] || !protected["notes/n.txt"] {
+		t.Errorf("protected = %+v, want snapshots/s.txt and notes/n.txt from the default profile", s.Protected)
+	}
+
+	md = Markdown(prepr("other.yaml"))
+	if !strings.Contains(md, "- Profile file `other.yaml`; judged by `reliability-profile.yaml`, since `reliability-profile.yaml` does not protect it.\n") {
+		t.Errorf("markdown does not say the default judged an unprotected file:\n%s", md)
 	}
 }
