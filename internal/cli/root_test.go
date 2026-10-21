@@ -178,3 +178,20 @@ func TestApproveAndGateProtected(t *testing.T) {
 		t.Fatalf("outside path: exit %d, %q", code, errOut)
 	}
 }
+
+// findings ack accepts every human kind (triage.Acknowledge checks
+// report.HumanKinds), so its help names each one; a person reading --help
+// must not think a below-threshold finding cannot be acknowledged.
+// Source: knowledge/decisions/finding-classification.md (per-kind policy
+// lives in report.Kinds).
+func TestFindingsAckHelpNamesEveryHumanKind(t *testing.T) {
+	code, out, errOut := run("findings", "ack", "--help")
+	if code != ExitOK {
+		t.Fatalf("exit %d, stderr %q", code, errOut)
+	}
+	for _, k := range report.HumanKinds {
+		if !strings.Contains(out, k) {
+			t.Errorf("findings ack --help does not name human kind %q:\n%s", k, out)
+		}
+	}
+}

@@ -190,7 +190,7 @@ func newFindingsCmd() *cobra.Command {
 	var by string
 	ack := &cobra.Command{
 		Use:   "ack <id>",
-		Short: "Record a human decision on a human-kind finding: legacy-defect-or-quirk, characterization-diff, equivalent-mutant, requirement-silent, or environment (people only)",
+		Short: "Record a human decision on a human-kind finding: " + strings.Join(report.HumanKinds, ", ") + " (people only)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root, err := repoRoot()
