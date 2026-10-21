@@ -178,3 +178,40 @@ func TestChangedSinceNeedsReliab(t *testing.T) {
 		t.Errorf("err = %v, want the failed helper named", err)
 	}
 }
+
+// knowledge/decisions/mutation-threshold.md: timeouts count as killed, never
+// as survivors. A gremlins report whose tests timed out on every mutant has
+// no survivor findings, and its counts, in total and per file, are kills,
+// so the score reads them as caught.
+func TestTimedOutMutantsAreKilledNotSurvivors(t *testing.T) {
+	const timedOut = `{"go_module":"example.com/m","files":[{"file_name":"lock.go","mutations":[
+  {"type":"CONDITIONALS_NEGATION","status":"TIMED OUT","line":12,"column":5},
+  {"type":"ARITHMETIC_BASE","status":"TIMED OUT","line":30,"column":9}]}],
+  "test_efficacy":100,"mutants_total":2}`
+	dir := t.TempDir()
+	rep := filepath.Join(dir, "g.json")
+	if err := os.WriteFile(rep, []byte(timedOut), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(dir, "findings.json")
+	if err := run("", out, []string{"internal/verify=" + rep}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := adapters.ParseFindings(raw)
+	if err != nil {
+		t.Fatalf("reliab cannot read %s: %v", raw, err)
+	}
+	if len(got) != 0 {
+		t.Errorf("findings = %+v, want no survivors", got)
+	}
+	if c := adapters.FindingsCounts(raw); c == nil || c.Killed != 2 || c.Survived != 0 || c.NotCovered != 0 {
+		t.Errorf("counts = %+v, want 2 killed", c)
+	}
+	if files := adapters.FindingsFileCounts(raw); files["internal/verify/lock.go"].Killed != 2 || files["internal/verify/lock.go"].Survived != 0 {
+		t.Errorf("file counts = %+v, want 2 killed in internal/verify/lock.go", files)
+	}
+}

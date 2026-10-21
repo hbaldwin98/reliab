@@ -35,7 +35,16 @@ threshold must not add work of its own or count them twice.
 - **The score rule.** A mutation command's score is killed over counted.
   Counted is killed, survived, and not covered, less the survivors a person
   confirmed equivalent:
-  - Timeouts count as killed, as the readers already judge them.
+  - Timeouts count as killed, as the readers already judge them
+    (gremlins' `TIMED OUT`, mutation-testing-elements' `Timeout`), never
+    as survivors (confirmed 2026-10-20, with a test from a gremlins
+    report): a mutant whose tests ran past the tool's limit changed
+    behavior enough to hang or slow them, which the suite notices;
+    calling it a survivor would ask for a test of a hang, and leaving it
+    out would let the machine's load change the counted total. Stryker
+    and PIT count a timeout as detected too. Load is what makes a mutant
+    time out that a quiet machine reports as surviving, so heavy runs go
+    one at a time ([heavy-run-lock](/decisions/heavy-run-lock.md)).
   - Not covered counts against the score: a mutant no test reaches is one
     the suite would not notice.
   - Mutants the tool did not test (did not build, skipped, not viable) are
