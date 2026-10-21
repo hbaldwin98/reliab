@@ -11,6 +11,8 @@ generated:
 
 # What the v0 hooks decide
 
+> Amended 2026-10-21 by [light-guardrails](/decisions/light-guardrails.md): pre-bash no longer inspects shell writes, and a push is reminded, not denied.
+
 ## Decision
 
 - **pre-edit** (Edit, Write, NotebookEdit): deny when the target is under a

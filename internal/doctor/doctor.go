@@ -3,7 +3,6 @@
 package doctor
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -72,7 +71,6 @@ func Run(dir string) []Check {
 		add(".gitignore", Fail, ".reliab/ is not ignored; reports would be committed and make every report stale")
 	}
 
-	out = append(out, denyRules(root, p)...)
 	out = append(out, versionPin(root)...)
 	out = append(out, tools(p)...)
 	out = append(out, missingRoles(p)...)
@@ -100,37 +98,6 @@ func missingRoles(p *profile.Profile) []Check {
 func roleNumber(id string) int {
 	n, _ := strconv.Atoi(strings.TrimPrefix(id, "T"))
 	return n
-}
-
-// denyRules checks the project settings deny edits to reliab's outputs and
-// every protected path.
-func denyRules(root string, p *profile.Profile) []Check {
-	raw, err := os.ReadFile(filepath.Join(root, ".claude", "settings.json"))
-	if err != nil {
-		return []Check{{"deny rules", Warn, ".claude/settings.json is missing; run reliab profile init"}}
-	}
-	var s struct {
-		Permissions struct {
-			Deny []string `json:"deny"`
-		} `json:"permissions"`
-	}
-	if err := json.Unmarshal(raw, &s); err != nil {
-		return []Check{{"deny rules", Warn, ".claude/settings.json does not parse: " + err.Error()}}
-	}
-	have := map[string]bool{}
-	for _, d := range s.Permissions.Deny {
-		have[d] = true
-	}
-	var missing []string
-	for _, r := range profile.DenyRules(root, p) {
-		if !have[r] {
-			missing = append(missing, r)
-		}
-	}
-	if len(missing) > 0 {
-		return []Check{{"deny rules", Warn, "missing " + strings.Join(missing, ", ") + "; run reliab profile init"}}
-	}
-	return []Check{{"deny rules", OK, fmt.Sprintf("%d rules", len(have))}}
 }
 
 func versionPin(root string) []Check {

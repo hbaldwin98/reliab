@@ -125,18 +125,11 @@ func ensureSettings(root string, p *profile.Profile) (string, error) {
 	}
 	before, _ := json.Marshal(s)
 
-	perms := object(s, "permissions")
-	appendUnique(perms, "deny", profile.DenyRules(root, p)...)
-	appendUnique(perms, "allow", "Bash(reliab *)")
+	appendUnique(object(s, "permissions"), "allow", "Bash(reliab *)")
 	object(object(s, "extraKnownMarketplaces"), MarketplaceName)["source"] = map[string]any{
 		"source": "github", "repo": MarketplaceRepo,
 	}
 	object(s, "enabledPlugins")[PluginID] = true
-	// Effective only when the user enables the sandbox, which reliab never
-	// does for them: it also sandboxes every command and restricts network.
-	if dirs := sandboxDirs(p.ProtectedPaths); len(dirs) > 0 {
-		appendUnique(object(object(s, "sandbox"), "filesystem"), "denyWrite", dirs...)
-	}
 
 	after, _ := json.Marshal(s)
 	if bytes.Equal(before, after) {
@@ -149,21 +142,7 @@ func ensureSettings(root string, p *profile.Profile) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return "", err
 	}
-	return "updated .claude/settings.json (deny rules, reliab allow rule, marketplace, plugin)", os.WriteFile(path, append(out, '\n'), 0o644)
-}
-
-// sandboxDirs converts protected globs of the form "dir/**" into the
-// sandbox's project-relative "./dir" form; other globs have no safe
-// equivalent and are left to the deny rules and hooks.
-func sandboxDirs(globs []string) []string {
-	var out []string
-	for _, g := range globs {
-		dir, ok := strings.CutSuffix(g, "/**")
-		if ok && dir != "" && !strings.ContainsAny(dir, "*?[{") {
-			out = append(out, "./"+dir)
-		}
-	}
-	return out
+	return "updated .claude/settings.json (reliab allow rule, marketplace, plugin)", os.WriteFile(path, append(out, '\n'), 0o644)
 }
 
 func object(m map[string]any, key string) map[string]any {

@@ -109,7 +109,7 @@ func TestProjectHookScriptsExist(t *testing.T) {
 			}
 		}
 	}
-	if n < 2 {
+	if n < 1 {
 		t.Errorf("only %d project hooks configured", n)
 	}
 }

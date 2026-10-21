@@ -37,8 +37,8 @@ func BenchmarkPreBash(b *testing.B) {
 		in := hookio.Input{ToolName: tool, Cwd: r.Root, ToolInput: hookio.ToolInput{Command: line}}
 		b.Run(name, func(b *testing.B) {
 			for b.Loop() {
-				if d := r.PreBash(in); d.Deny != "" {
-					b.Fatalf("%q denied: %s", line, d.Deny)
+				if d := r.PreBash(in); d.Context != "" {
+					b.Fatalf("%q reminded: %s", line, d.Context)
 				}
 			}
 		})

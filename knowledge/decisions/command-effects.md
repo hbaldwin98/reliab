@@ -2,7 +2,7 @@
 type: Decision
 title: "The pre-bash hook reads a command line once and judges its effects"
 description: "internal/guard/effects reads a Bash or PowerShell line once (continuations, quotes and escapes per shell, curly quotes, heredocs, substitutions, code nested in -c, -Command, eval, iex) and returns its simple commands with their words, the directories each may run in, the paths each may write or remove whole, the reliab command paths it may invoke, and whether it pushes. PreBash only judges those effects. Data stays data: quoted text is never a redirect or a verb, a heredoc body is data unless a shell reads it, and push is a git push a shell runs."
-status: draft
+status: deprecated
 tags: [hooks, enforcement, protected-paths, performance]
 generated:
   by: claude-code/claude-opus-5-5
@@ -10,6 +10,8 @@ generated:
 ---
 
 # The pre-bash hook reads a command line once and judges its effects
+
+> Deprecated 2026-10-21: replaced by [light-guardrails](/decisions/light-guardrails.md).
 
 ## Context
 

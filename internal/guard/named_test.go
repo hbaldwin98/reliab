@@ -23,8 +23,8 @@ func runNamed(t *testing.T, r *Repo, tier string, tests ...string) {
 }
 
 // A tier run that names its tests is a normal tier run for both hooks; one
-// that needed tests and named none keeps the stop hook asking and the push
-// denied, saying which command waits.
+// that needed tests and named none keeps the stop hook and the pre-push
+// reminder asking, saying which command waits.
 func TestHooksWaitForNamedTests(t *testing.T) {
 	t.Parallel()
 	r := open(t, needsTests)
@@ -37,7 +37,7 @@ func TestHooksWaitForNamedTests(t *testing.T) {
 	if d := r.Stop(hookio.Input{StopHookActive: true}); d.Block != "" {
 		t.Error("blocked although stop_hook_active is set")
 	}
-	if d := r.PrePush(); !strings.Contains(d.Deny, "store_tests: no tests named") {
+	if d := r.PrePush(); !strings.Contains(d.Context, "store_tests: no tests named") {
 		t.Errorf("push with tests unnamed: %+v", d)
 	}
 
@@ -47,7 +47,7 @@ func TestHooksWaitForNamedTests(t *testing.T) {
 	if d := r.Stop(hookio.Input{}); d.Block != "" {
 		t.Errorf("stop after a run that named its tests: %s", d.Block)
 	}
-	if d := r.PrePush(); d.Deny != "" {
-		t.Errorf("push after a prepr run that named its tests: %s", d.Deny)
+	if d := r.PrePush(); d != (hookio.Decision{}) {
+		t.Errorf("push after a prepr run that named its tests: %+v", d)
 	}
 }

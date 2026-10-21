@@ -34,7 +34,7 @@ would mean nothing.
   the user, not something to argue the reviewer out of.
 
 Any edit after the review voids the verdict: the report goes stale, and the
-push gate asks for a new review.
+pre-push reminder asks for a new review.
 
 ## 3. The evidence section
 

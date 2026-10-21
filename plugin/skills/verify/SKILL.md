@@ -13,11 +13,11 @@ budget and writes the one report everything else reads.
 
 - When a change is done, before you stop or hand back:
   `reliab verify --tier inner` (budget about 5 minutes). Not after each file
-  edit; finish the change first. The stop hook blocks stopping while product
+  edit; finish the change first. The stop hook reminds you once when product
   code changed since the last report.
 - Before a branch merges into main (opening a PR, pushing, or merging
-  locally): `reliab verify --tier prepr`. The push is denied unless this
-  report is fresh, complete, and has no open findings. Then commit, have the
+  locally): `reliab verify --tier prepr`. A push reminds you when this
+  report is stale, incomplete, or has open findings. Then commit, have the
   `reliab:reviewer` agent review the change (it reviews committed work
   only), and for a PR write the evidence with `reliab report summary`; the
   summary skill has the steps.
@@ -79,7 +79,7 @@ records the selection, and the reviewer checks it against the diff.
 A command whose profile `needs: [tests]` (or `mutation_tests`) runs only when
 you name them. Without them the run is incomplete (exit 3), `reliab report
 route` prints `incomplete <command>: no tests named`, and the stop hook and
-push gate wait until a run names them. Re-run the whole tier with the
+pre-push reminder keep asking until a run names them. Re-run the whole tier with the
 selection; a tier run with named tests satisfies both hooks.
 
 ## On demand
@@ -88,7 +88,7 @@ selection; a tier run with named tests satisfies both hooks.
 profile commands, under the `--tier` budget, and writes the on-demand
 report. Use it when the person points you at an area and a kind of testing
 (the mutation and properties skills say how). It never satisfies the stop
-hook or the push gate; the inner and pre-PR tiers still run as above.
+hook or the pre-push reminder; the inner and pre-PR tiers still run as above.
 
 ## Exit codes
 

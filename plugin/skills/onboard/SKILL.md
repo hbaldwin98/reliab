@@ -37,10 +37,6 @@ later stages are the person's call.
 - Run every probe through `reliab verify --only <command>`, never the tool
   alone: the point is that reliab ingests the output. Use `--tier nightly`
   (no budget) while probing, so a slow command is timed, not killed.
-- Keep a shell command that writes files apart from one that reads
-  `.reliab/` or a protected path. The pre-bash hook treats every path in a
-  command that writes anything as a write target, so `sed -i x.cs && cat
-  .reliab/reports/...` is denied; run them as two commands.
 
 ## 1. Ask only what the code cannot tell
 
@@ -71,16 +67,16 @@ reliab profile init --starting-condition <condition>
 ```
 
 It writes the profile skeleton (unless one exists), ignores `.reliab/`,
-merges deny rules and the plugin into `.claude/settings.json`, adds the
+merges the plugin into `.claude/settings.json`, adds the
 testing rules to `AGENTS.md`, and pins the version. If a profile already
 exists, init keeps it: read it, and treat every filling in it as a claim to
 probe like any other. Set `paths` now (product, tests, ignore); a file that
-matches none counts as product, so a gap makes the hooks stricter, not
-looser. Put the agreed oracles in `protected_paths`, beside
+matches none counts as product, so a gap makes the stop reminder fire
+more, not less. Put the agreed oracles in `protected_paths`, beside
 `reliability-profile.yaml`, which init lists there: the profile guards its
 own thresholds, relevance rules, and baseline. Protection of the profile
 takes effect once the person commits it; until then it is yours to write.
-After that, every edit to it is denied to agents and needs the person's
+After that, the hooks remind agents that changes to it need the person's
 `reliab approve reliability-profile.yaml --by human:<name>`.
 
 The `examples/` directory beside this skill has complete profiles for
@@ -272,9 +268,7 @@ role's `notes`, and the failed claim goes in `corrections`:
     accept.
   - `protected_edits`: RE2 patterns for text that switches acceptance on
     from inside test code (an auto-accept or auto-verify setting).
-  Check each pattern against the tool's real command line, and re-run
-  `reliab profile init` after changing `protected_paths` so the deny rules
-  follow.
+  Check each pattern against the tool's real command line.
 
 ## 7. The gate
 
@@ -298,8 +292,7 @@ step. Leave `verified_on` unset until it is done.
 
 Stop here. Do not start S1 work, add tests, or commit unless the person
 asks. Tell the person that committing the profile turns its own protection
-on: re-run `reliab profile init` after the commit so the deny rules include
-it, and later profile changes go through `reliab approve`.
+on: later profile changes go through `reliab approve`.
 
 ## The S0 report
 

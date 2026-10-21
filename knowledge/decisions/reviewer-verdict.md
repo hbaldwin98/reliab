@@ -11,6 +11,8 @@ generated:
 
 # The reviewer subagent and its tree-bound verdict
 
+> Amended 2026-10-21 by [light-guardrails](/decisions/light-guardrails.md): pre-bash no longer inspects shell writes, and a push is reminded, not denied.
+
 ## Context
 
 The paper's pre-push hook requires a reviewer verdict; v0 shipped the gate

@@ -51,34 +51,14 @@ in a hook is as serious as a bypass.
 - **The reviewer is also a project agent here**:
   `.claude/agents/reviewer.md` is a byte copy of
   `plugin/agents/reviewer.md`, and a repocheck test fails when they differ.
-  It is the review, not the verdict, that this makes reliably available: a
-  project agent's `agent_type` is its bare name (`reviewer`), and the
-  pre-bash guard allows `reliab report verdict` only to `reliab:reviewer`
-  ([reviewer-verdict](/decisions/reviewer-verdict.md)). Where the plugin is
-  installed its hooks deny the copy the verdict and name `reliab:reviewer`,
-  which is then available; where it is not, no reliab hook runs at all.
-  Accepting `reviewer` in the guard is left to the owner (it would let any
-  project agent of that name record a verdict in every consumer
-  repository).
-- **A PreToolUse hook warns on shell writes to `.go` and `.md` files**
-  (`.claude/hooks/warn-shell-writes.awk`, Bash and PowerShell). It returns
-  `additionalContext` with exit 0 and no permission decision, so the
-  command runs as before and the agent reads the warning. The settings run
-  it as `awk -f`, one process with no `sh` in front, and its work is linear
-  in the command's length: a call takes about the time awk takes to start,
-  and a 200 KB heredoc about 0.1 s. It splits the command as a shell would
-  (quotes, escapes, comments, heredocs, `;`, `&&`, `|`) and looks only at
-  what can write: a redirect target, `sed` or `perl` with an in-place
-  option word, `tee`, PowerShell's content cmdlets and `File.WriteAll*`,
-  and python code (its `-c` argument or the heredoc it reads) that opens a
-  file for writing or calls `write_text` on a `.go` or `.md` path. So a
-  hyphenated path, a commit message, a heredoc's data, or python that only
-  reads stays quiet. A first version matched patterns over the whole
-  command: a review found it warned on `sed -n` over 24 of the 42 decision
-  files (any `-...i` in a path read as `-i`), on python that wrote to
-  stdout, and on commit text after `git -C`; and its shell expansions grew
-  with the square of a heredoc's size, past the hook's 10 s timeout at
-  about 200 KB.
+  A project agent's `agent_type` is its bare name (`reviewer`), which the
+  guard accepts alongside `reliab:reviewer` for `reliab report verdict`
+  ([reviewer-verdict](/decisions/reviewer-verdict.md)).
+- **No dev hook watches shell writes.** A warn-only PreToolUse hook on
+  shell writes to `.go` and `.md` files was removed 2026-10-21 with the
+  rest of the shell inspection ([light-guardrails](/decisions/light-guardrails.md)):
+  it fired on ordinary edits outside the repository. `gofmt -l` and
+  `git diff` catch the CRLF and encoding damage it warned about.
 - **A SessionStart hook builds the checkout's reliab**
   (`.claude/hooks/dev-session-start.sh`) into `.devbin/` (gitignored) and
   appends `.devbin` to PATH through `CLAUDE_ENV_FILE`. `go build` is the

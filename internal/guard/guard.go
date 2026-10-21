@@ -1,16 +1,16 @@
-// Package guard decides hook events: it denies edits to protected oracles,
-// denies shell commands that would write them or push unverified work, keeps
-// the agent from stopping with unverified changes, and briefs new sessions.
-// It fails open when the repository has no usable profile, so a broken
-// profile never bricks a session; CI gates remain authoritative
-// (knowledge/decisions/enforcement-hooks-self-contained.md).
+// Package guard answers hook events with reminders, never denials: when an
+// edit or command touches what a person approves (protected oracles, the
+// person-only reliab commands, the profile's protected commands and edits),
+// before a push, once when the agent stops with unverified changes, and when
+// a session starts. It stays quiet when the repository has no usable
+// profile; CI gates remain authoritative
+// (knowledge/decisions/light-guardrails.md).
 package guard
 
 import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -19,7 +19,6 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 
 	"github.com/hbaldwin98/reliab/internal/gitx"
-	"github.com/hbaldwin98/reliab/internal/guard/effects"
 	"github.com/hbaldwin98/reliab/internal/hookio"
 	"github.com/hbaldwin98/reliab/internal/profile"
 	"github.com/hbaldwin98/reliab/internal/report"
@@ -59,85 +58,22 @@ func (r *Repo) editSet() *profile.EditSet {
 	return r.edits
 }
 
-// rels turns a path from a tool call into the repo-relative slash paths it
-// may name: with .. taken by name, as PowerShell takes it, and as the kernel
-// resolves it through symlinks (physical). It returns none for a path
-// outside the repository. resolved keeps physical's answers for one hook
-// call, so a path named from several directories is resolved once; nil
-// keeps none.
-func (r *Repo) rels(cwd, p string, resolved map[string]string) []string {
+// rel turns a path from a tool call into a repo-relative slash path; ok is
+// false for a path outside the repository.
+func (r *Repo) rel(cwd, p string) (string, bool) {
 	p = strings.Trim(p, `"'`)
 	if p == "" {
-		return nil
+		return "", false
 	}
-	// PowerShell commands use backslashes on every OS.
 	p = filepath.FromSlash(strings.ReplaceAll(p, `\`, "/"))
 	if !filepath.IsAbs(p) {
 		base := cwd
 		if base == "" {
 			base = r.Root
 		}
-		p = base + string(filepath.Separator) + p
+		p = filepath.Join(base, p)
 	}
-	var out []string
-	if rel, ok := gitx.Rel(r.Root, filepath.Clean(p)); ok {
-		out = append(out, rel)
-	}
-	phys, ok := resolved[p]
-	if !ok {
-		phys = physical(p)
-		if resolved != nil {
-			resolved[p] = phys
-		}
-	}
-	if rel, ok := gitx.Rel(r.Root, phys); ok && (len(out) == 0 || rel != out[0]) {
-		out = append(out, rel)
-	}
-	return out
-}
-
-// physical resolves p, an absolute path, as the kernel does
-// (path_resolution(7)): each component through symlinks before the next, so
-// a .. after a symlink leaves the directory the link leads to, not the one
-// it is named in. What does not exist yet is joined as named. The
-// components between two ..s resolve in one call: with no .. among them,
-// resolving them together is resolving each in turn.
-func physical(p string) string {
-	vol := filepath.VolumeName(p)
-	cur := vol + string(filepath.Separator)
-	var run []string
-	flush := func() {
-		if len(run) > 0 {
-			cur = existing(filepath.Join(append([]string{cur}, run...)...))
-			run = run[:0]
-		}
-	}
-	for _, c := range strings.Split(filepath.ToSlash(p[len(vol):]), "/") {
-		if c == "" || c == "." {
-			continue
-		}
-		if c == ".." {
-			flush()
-			cur = filepath.Dir(cur)
-			continue
-		}
-		run = append(run, c)
-	}
-	flush()
-	return cur
-}
-
-// existing resolves p through symlinks as far as it exists, and joins the
-// rest as named.
-func existing(p string) string {
-	if real, err := filepath.EvalSymlinks(p); err == nil {
-		return real
-	}
-	dir := filepath.Dir(p)
-	if dir == p {
-		return p
-	}
-	return filepath.Join(existing(dir), filepath.Base(p))
+	return gitx.Rel(r.Root, filepath.Clean(p))
 }
 
 // caseless says the file system ignores case by default, as Windows' and
@@ -175,47 +111,20 @@ func (r *Repo) isProtected(rel string) (string, bool) {
 	return "", false
 }
 
-// holdsProtected reports whether the repo-relative path is a directory that
-// holds a protected file, such as a snapshot directory whose files a glob
-// like **/*.verified.* matches. files lists the repository's files, as
-// gitx.Files does, so one listing serves every path a command names.
-func (r *Repo) holdsProtected(files []string, rel string) (string, bool) {
-	dir := strings.TrimSuffix(rel, "/")
-	if fi, err := os.Stat(filepath.Join(r.Root, filepath.FromSlash(dir))); err != nil || !fi.IsDir() {
-		return "", false
-	}
-	prefix := dir + "/"
-	if dir == "." || dir == "" {
-		prefix = ""
-	}
-	for _, f := range files {
-		if caseless && !strings.HasPrefix(strings.ToLower(f), strings.ToLower(prefix)) || !caseless && !strings.HasPrefix(f, prefix) {
-			continue
-		}
-		for _, g := range r.editSet().Globs() {
-			if match(g, f) {
-				return g, true
-			}
-		}
-	}
-	return "", false
-}
-
-// PreEdit denies Edit, Write, and NotebookEdit calls on protected paths (R2).
+// PreEdit reminds the agent when Edit, Write, or NotebookEdit targets a
+// protected path (R2).
 func (r *Repo) PreEdit(in hookio.Input) hookio.Decision {
-	rels := r.rels(in.Cwd, in.ToolInput.Path(), nil)
-	if len(rels) == 0 {
+	rel, ok := r.rel(in.Cwd, in.ToolInput.Path())
+	if !ok {
 		return hookio.Decision{}
 	}
-	for _, rel := range rels {
-		if g, hit := r.isProtected(rel); hit {
-			return hookio.Decision{Deny: protectedReason(rel, g)}
-		}
+	if g, hit := r.isProtected(rel); hit {
+		return remind(protectedReason(rel, g))
 	}
-	return r.protectedEdit(rels[0], in.ToolInput)
+	return r.protectedEdit(rel, in.ToolInput)
 }
 
-// protectedEdit denies an edit that adds text matching protected_edits,
+// protectedEdit reminds on an edit that adds text matching protected_edits,
 // such as a snapshot tool's auto-accept switch: it approves an oracle
 // without naming its path (R2). Text the file already had is not counted,
 // so editing near an existing match is allowed. A hook cannot see what a
@@ -243,8 +152,8 @@ func (r *Repo) protectedEdit(rel string, t hookio.ToolInput) hookio.Decision {
 	for _, re := range guards {
 		for _, c := range changes {
 			if len(re.FindAllStringIndex(c.after, -1)) > len(re.FindAllStringIndex(c.before, -1)) {
-				return hookio.Decision{Deny: fmt.Sprintf("reliab: this edit to %s adds text matching protected_edits %q, which approves or rewrites a protected oracle without naming it. "+
-					"Oracles change only with human approval (R2): leave the diff for a person, classify the finding characterization-diff, and stop.", rel, re.String())}
+				return remind(fmt.Sprintf("this edit to %s adds text matching protected_edits %q, which approves or rewrites a protected oracle without naming it. "+
+					"Oracles change with a person's approval (R2): unless the user asked for this, leave the diff for them and classify the finding characterization-diff.", rel, re.String()))
 			}
 		}
 	}
@@ -269,253 +178,176 @@ func protectedCommandsRule(pats []string) string {
 	return "; never run commands matching " + strings.Join(pats, ", ")
 }
 
-func protectedReason(rel, glob string) string {
-	if strings.HasPrefix(glob, ".reliab/") {
-		return fmt.Sprintf("reliab: %s is written only by the reliab binary. Use reliab verify, reliab findings classify, reliab report route, or reliab characterize discard instead.", rel)
-	}
-	return fmt.Sprintf("reliab: %s is a protected oracle (matches %s). Oracles change only with human approval (R2). "+
-		"Do not edit it; report the needed change to the user, who decides.", rel, glob)
+// remind is a hook answer the agent reads and the harness never blocks on.
+func remind(msg string) hookio.Decision {
+	return hookio.Decision{Context: "reliab reminder (not blocked): " + msg}
 }
 
-var (
-	// The person-only commands as typed, a net under the reader's
-	// invocations: they also catch reliab's words glued to other text (git
-	// -c alias.x='!reliab approve') and in any case (Reliab.EXE Findings
-	// Ack). They run on the line with its data blanked (effects.Effects.Code).
-	// The binary may be quoted: & "C:\tools\reliab.exe" findings ack.
-	ackCmd     = regexp.MustCompile(`(?i)\breliab(\.exe|\.cmd)?["']?\s+findings\s+ack\b`)
-	approveCmd = regexp.MustCompile(`(?i)\breliab(\.exe|\.cmd)?["']?\s+approve\b`)
-	verdictCmd = regexp.MustCompile(`(?i)\breliab(\.exe|\.cmd)?["']?\s+report\s+verdict\b`)
-	// baselineWrite changes the protected mutation baseline without naming
-	// its path.
-	baselineWrite = regexp.MustCompile(`(?i)\breliab(\.exe|\.cmd)?["']?\s+baseline\s+write\b`)
-)
+func protectedReason(rel, glob string) string {
+	if strings.HasPrefix(glob, ".reliab/") {
+		return fmt.Sprintf("%s is written by the reliab binary; reliab verify, reliab findings classify, and reliab characterize discard change it.", rel)
+	}
+	return fmt.Sprintf("%s is a protected oracle (matches %s), which changes with a person's approval (R2). "+
+		"Unless the user asked for this change, report it to them instead.", rel, glob)
+}
+
+// personCmd matches reliab run as a command, at the start of the line or
+// after a separator, with its binary bare, pathed, or quoted (& "C:\tools\
+// reliab.exe"), followed by a person-only subcommand. reliab named inside
+// an argument, such as a commit message, is not at a command position and
+// passes (knowledge/decisions/light-guardrails.md).
+var personCmd = regexp.MustCompile(`(?i)^\s*(?:\w+=\S*\s+)*["']?(?:[^\s"';&|]*[\\/])?reliab(?:\.exe|\.cmd)?["']?\s+(findings\s+ack|approve|report\s+verdict|baseline\s+write)\b`)
+
+// personSubcommand returns the person-only subcommand cmd runs, if any. It
+// finds each "reliab" and matches personCmd, anchored, from the command
+// position before it: just after the nearest separator, or the line's start.
+// Anchoring keeps a long commit message cheap.
+func personSubcommand(cmd string) string {
+	lower := strings.ToLower(cmd)
+	if !strings.Contains(lower, "reliab") {
+		return ""
+	}
+	if strings.Contains(cmd, "<<") {
+		cmd = stripHeredocs(cmd)
+		lower = strings.ToLower(cmd)
+	}
+	for off := 0; ; {
+		i := strings.Index(lower[off:], "reliab")
+		if i < 0 {
+			return ""
+		}
+		i += off
+		start := strings.LastIndexAny(cmd[:i], ";&|(`{\n") + 1
+		if m := personCmd.FindStringSubmatch(cmd[start:]); m != nil {
+			return strings.ToLower(strings.Join(strings.Fields(m[1]), " "))
+		}
+		off = i + len("reliab")
+	}
+}
+
+// pushCmd matches a git push or a PR creation, for the pre-push reminder.
+var pushCmd = regexp.MustCompile(`\bgit\b[^;&|\n]*\spush\b|\bgh\s+pr\s+create\b`)
 
 // ReviewerAgent is the plugin's reviewer subagent as hooks see it: the only
 // caller allowed to record a verdict (knowledge/decisions/reviewer-verdict.md).
 const ReviewerAgent = "reliab:reviewer"
 
-// shell is the language a hook's tool runs: the data rule is trusted only
-// for the Bash tool, whose shell the reader models.
-func shell(tool string) effects.Shell {
-	if tool == "PowerShell" {
-		return effects.PowerShell
-	}
-	if tool == "Bash" {
-		return effects.Bash
-	}
-	return effects.Unknown
-}
+// isReviewer accepts the plugin's reviewer and a project copy of it
+// (.claude/agents/reviewer.md), which hooks name without the plugin prefix.
+func isReviewer(agent string) bool { return agent == ReviewerAgent || agent == "reviewer" }
 
-// PreBash inspects Bash and PowerShell commands. It reads the line once
-// (package effects) and judges what it may do: it denies agents the human
-// acknowledgement and approval commands, everyone but the reviewer the
-// verdict command, writes to protected paths, and pushes or PR creation
-// without a fresh, complete pre-PR report.
+// PreBash reminds the agent when it runs a person-only reliab command or a
+// profile's protected command, and of the pre-PR report's state before a
+// push or PR creation. Nothing else is inspected, and nothing is denied.
 func (r *Repo) PreBash(in hookio.Input) hookio.Decision {
 	cmd := in.ToolInput.Command
-	cwd := in.Cwd
-	if cwd == "" {
-		cwd = r.Root
-	}
-	e := effects.Read(cmd, shell(in.ToolName), cwd)
-	code := e.Code
-	if !strings.Contains(strings.ToLower(code), "reliab") {
-		// The regexes below need reliab's name; most lines lack it.
-		code = ""
-	}
-	if ackCmd.MatchString(code) || e.Invokes("findings", "ack") {
-		return hookio.Decision{Deny: "reliab: findings ack records a human decision; only a person runs it. Ask the user."}
-	}
-	if baselineWrite.MatchString(code) || e.Invokes("baseline", "write") {
-		return hookio.Decision{Deny: "reliab: baseline write changes the protected mutation baseline (R2); only a person runs it. Show the user reliab baseline propose and ask."}
-	}
-	if approveCmd.MatchString(code) || e.Invokes("approve") {
-		return hookio.Decision{Deny: "reliab: approve records a person's approval of a protected-path change (R2); only a person runs it. " +
-			"List the change under questions for a human and stop; the user runs reliab approve <path> --by human:<name>."}
-	}
-	if (verdictCmd.MatchString(code) || e.Invokes("report", "verdict")) && in.AgentType != ReviewerAgent {
-		return hookio.Decision{Deny: "reliab: report verdict is the reviewer's to record, never the author's. " +
-			"After a clean reliab verify --tier prepr, have the " + ReviewerAgent + " agent review the change; it records the verdict."}
-	}
-	// protected_commands stay a raw-text check
-	// (knowledge/decisions/protected-path-enforcement.md §5).
-	for _, re := range r.Profile.CommandGuards() {
-		if re.MatchString(cmd) {
-			return hookio.Decision{Deny: fmt.Sprintf("reliab: this command approves or rewrites a protected oracle (matches protected_commands %q). "+
-				"Oracles change only with human approval (R2): leave the diff for a person, classify the finding characterization-diff, and stop.", re.String())}
+	if sub := personSubcommand(cmd); sub != "" {
+		if sub == "findings ack" {
+			return remind("findings ack records a person's decision. Unless the user asked you to record it, ask them.")
+		}
+		if sub == "baseline write" {
+			return remind("baseline write changes the protected mutation baseline (R2). Unless the user asked for it, show them reliab baseline propose.")
+		}
+		if sub == "approve" {
+			return remind("approve records a person's approval of a protected-path change (R2). Unless the user asked you to record it, list the change as a question for them.")
+		}
+		if !isReviewer(in.AgentType) {
+			return remind("report verdict is the reviewer's to record, not the author's; the " + ReviewerAgent + " agent records it after reviewing.")
 		}
 	}
-	if d := r.protectedWrite(e); d.Deny != "" {
-		return d
+	for _, re := range r.Profile.CommandGuards() {
+		if re.MatchString(cmd) {
+			return remind(fmt.Sprintf("this command approves or rewrites a protected oracle (matches protected_commands %q). "+
+				"Oracles change with a person's approval (R2): unless the user asked for this, leave the diff for them and classify the finding characterization-diff.", re.String()))
+		}
 	}
-	if e.Push {
+	// The substring checks keep the regexp off most lines.
+	if (strings.Contains(cmd, "push") || strings.Contains(cmd, "pr create")) && pushCmd.MatchString(cmd) {
 		return r.PrePush()
 	}
 	return hookio.Decision{}
 }
 
-// protectedWrite judges each simple command on its own: a path is a write
-// target only as a redirection target, an operand of a write verb, or an
-// output option's value, in the same simple command. So a read that names
-// a protected path or .reliab/ passes, even beside a write elsewhere in the
-// command line. A relative path resolves in each directory its command may
-// run in (effects.Command.Dirs).
-func (r *Repo) protectedWrite(e *effects.Effects) hookio.Decision {
-	var files, repoDirs []string
-	listed := false
-	list := func() []string {
-		if !listed {
-			files, _ = gitx.Files(r.Root, nil)
-			listed = true
+// heredocStart finds a heredoc operator and its delimiter word.
+var heredocStart = regexp.MustCompile(`<<-?\s*['"]?([A-Za-z_][A-Za-z0-9_]*)['"]?`)
+
+// stripHeredocs drops heredoc bodies, which are data (a commit message
+// naming reliab approve on a line of its own), keeping the rest of the line.
+func stripHeredocs(cmd string) string {
+	for {
+		loc := heredocStart.FindStringSubmatchIndex(cmd)
+		if loc == nil {
+			return cmd
 		}
-		return files
-	}
-	resolved := map[string]string{}
-	paths := func(dir, t string) []string {
-		if dir != effects.Anywhere {
-			return r.target(dir, t, resolved)
+		word := cmd[loc[2]:loc[3]]
+		nl := strings.IndexByte(cmd[loc[1]:], '\n')
+		if nl < 0 {
+			return cmd
 		}
-		if repoDirs == nil {
-			repoDirs = r.dirs(list())
-		}
-		return r.fromAnywhere(repoDirs, t, resolved)
-	}
-	for _, c := range e.Commands {
-		for _, t := range c.Writes {
-			for _, dir := range c.Dirs {
-				for _, rel := range paths(dir, t) {
-					if g, hit := r.isProtected(rel); hit {
-						return hookio.Decision{Deny: protectedReason(rel, g)}
-					}
-				}
+		bodyStart := loc[1] + nl + 1
+		rest := cmd[bodyStart:]
+		end := len(cmd)
+		for i := 0; i <= len(rest); {
+			j := strings.IndexByte(rest[i:], '\n')
+			line := rest[i:]
+			if j >= 0 {
+				line = rest[i : i+j]
 			}
-		}
-	}
-	// A directory holding an oracle counts only as an operand of a command
-	// that rewrites or removes a whole directory, in its own simple command,
-	// so not git -C's directory before the subcommand.
-	for _, c := range e.Commands {
-		for _, t := range c.Whole {
-			for _, dir := range c.Dirs {
-				for _, rel := range paths(dir, t) {
-					if g, hit := r.holdsProtected(list(), rel); hit {
-						return hookio.Decision{Deny: protectedReason(rel, g)}
-					}
-				}
+			if strings.TrimSpace(line) == word {
+				end = bodyStart + i + len(line)
+				break
 			}
+			if j < 0 {
+				break
+			}
+			i += j + 1
 		}
+		cmd = cmd[:loc[0]] + cmd[end:]
+	}
+}
+
+// PrePush reminds the agent, before a push or PR, when the latest pre-PR
+// report is missing, stale, incomplete, has open findings, or lacks a
+// verdict the profile requires. CI is the gate.
+func (r *Repo) PrePush() hookio.Decision {
+	if problem := r.prePushProblem(); problem != "" {
+		return remind(problem + " Run reliab verify --tier prepr and resolve what reliab report route lists before this lands.")
 	}
 	return hookio.Decision{}
 }
 
-// target turns one command token into the repo-relative paths it may name
-// (rels), skipping options and the null device.
-func (r *Repo) target(cwd, t string, resolved map[string]string) []string {
-	t = strings.Trim(t, `"'`)
-	if t == "" || strings.HasPrefix(t, "-") || t == "/dev/null" {
-		return nil
-	}
-	out := r.rels(cwd, t, resolved)
-	// Git Bash on Windows names drive C: /c, as the reader's cd does.
-	// A drive's root itself (/c) holds no repository's file.
-	if runtime.GOOS == "windows" && len(t) > 2 && t[0] == '/' && isLetter(t[1]) && t[2] == '/' {
-		out = append(out, r.rels(cwd, t[1:2]+":/"+t[3:], resolved)...)
-	}
-	return out
-}
-
-func isLetter(c byte) bool { return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' }
-
-// fromAnywhere turns one relative command token into the repo-relative
-// paths it may name from a directory the hook cannot know. Its leading ..s
-// reach any directory, so what follows them is judged below each directory
-// of the repository (repoDirs) and each directory above it.
-func (r *Repo) fromAnywhere(repoDirs []string, t string, resolved map[string]string) []string {
-	t = strings.Trim(t, `"'`)
-	if t == "" || strings.HasPrefix(t, "-") || t == "/dev/null" {
-		return nil
-	}
-	p := filepath.FromSlash(strings.ReplaceAll(t, `\`, "/"))
-	sep := string(filepath.Separator)
-	// Absolute, rooted, or on a drive: it names the same file from anywhere
-	// on that drive.
-	if filepath.IsAbs(p) || filepath.VolumeName(p) != "" || strings.HasPrefix(p, sep) {
-		return r.rels(r.Root, p, resolved)
-	}
-	p = filepath.Clean(p)
-	for p == ".." || strings.HasPrefix(p, ".."+sep) {
-		p = strings.TrimPrefix(strings.TrimPrefix(p, ".."), sep)
-	}
-	var out []string
-	for _, base := range repoDirs {
-		if rel, ok := gitx.Rel(r.Root, filepath.Join(base, p)); ok {
-			out = append(out, rel)
-		}
-	}
-	return out
-}
-
-// dirs lists the repository's root, every directory holding one of its
-// files (gitx.Files) but a protected one, and every directory above the
-// root. A cd into an oracle's directory is no accident, and counting it
-// would deny every relative write after a cd to a variable, such as rm -rf
-// build.
-func (r *Repo) dirs(files []string) []string {
-	out := []string{r.Root}
-	for d := r.Root; filepath.Dir(d) != d; {
-		d = filepath.Dir(d)
-		out = append(out, d)
-	}
-	seen := map[string]bool{}
-	for _, f := range files {
-		for d := path.Dir(f); d != "." && !seen[d]; d = path.Dir(d) {
-			seen[d] = true
-			if _, hit := r.isProtected(d); !hit {
-				out = append(out, filepath.Join(r.Root, filepath.FromSlash(d)))
-			}
-		}
-	}
-	return out
-}
-
-// PrePush allows a push or PR only when the latest pre-PR report matches
-// the working tree, is complete, has no open findings, and, if the profile
-// requires it, carries a passing reviewer verdict.
-func (r *Repo) PrePush() hookio.Decision {
-	const fix = " Run reliab verify --tier prepr and resolve what reliab report route lists."
+func (r *Repo) prePushProblem() string {
 	rep, err := report.Read(report.LatestPath(r.Root, "prepr"))
 	if err != nil {
-		return hookio.Decision{Deny: "reliab: no pre-PR report." + fix}
+		return "there is no pre-PR report."
 	}
 	if fresh, err := r.fresh(rep); err != nil {
-		return hookio.Decision{Deny: "reliab: cannot check report freshness: " + err.Error()}
+		return "cannot check report freshness: " + err.Error() + "."
 	} else if !fresh {
-		return hookio.Decision{Deny: "reliab: the pre-PR report is stale; the code changed while or after it ran." + fix}
+		return "the pre-PR report is stale; the code changed while or after it ran."
 	}
 	if waiting := rep.NeedsInput(); len(waiting) > 0 {
-		return hookio.Decision{Deny: "reliab: the pre-PR report is incomplete: " + needsInputText(waiting) + "." + fix}
+		return "the pre-PR report is incomplete: " + needsInputText(waiting) + "."
 	}
 	if !rep.Run.Complete {
-		return hookio.Decision{Deny: "reliab: the pre-PR report is incomplete (budget ran out)." + fix}
+		return "the pre-PR report is incomplete (budget ran out)."
 	}
 	if n := countOpen(rep); n > 0 {
-		return hookio.Decision{Deny: fmt.Sprintf("reliab: the pre-PR report has %d open finding(s).", n) + fix}
+		return fmt.Sprintf("the pre-PR report has %d open finding(s).", n)
 	}
 	if r.Profile.RequireReviewerVerdict {
-		// if, not switch: Go coverage does not instrument case expressions.
 		v := rep.Verdict
 		if v == nil {
-			return hookio.Decision{Deny: "reliab: the profile requires a passing reviewer verdict on the pre-PR report, and it has none. Have the " + ReviewerAgent + " agent review the change."}
+			return "the profile asks for a reviewer verdict and the report has none; have the " + ReviewerAgent + " agent review the change."
 		}
 		if v.Outcome != report.VerdictPass {
-			return hookio.Decision{Deny: "reliab: the reviewer's verdict is " + v.Outcome + ": " + v.Notes}
+			return "the reviewer's verdict is " + v.Outcome + ": " + v.Notes
 		}
 		if !rep.VerdictCurrent() {
-			return hookio.Decision{Deny: "reliab: the reviewer's verdict is for another tree. Have the " + ReviewerAgent + " agent review the change again."}
+			return "the reviewer's verdict is for another tree; have the " + ReviewerAgent + " agent review the change again."
 		}
 	}
-	return hookio.Decision{}
+	return ""
 }
 
 // needsInputText lists the commands that wait for tests to be named.
@@ -546,10 +378,11 @@ func countOpen(rep *report.Report) int {
 	return n
 }
 
-// Stop keeps the agent working when product code changed since the latest
+// Stop prods the agent once when product code changed since the latest
 // report (R8) or the agent still owes work on open findings. Findings that
-// need a human do not block: stopping to ask is the right move. It honors
-// stop_hook_active so the harness's own block cap is never the backstop.
+// need a human do not prod: stopping to ask is the right move. The harness
+// delivers a reminder from a Stop hook only as a block, so this blocks once
+// and lets the next stop through (stop_hook_active): a nudge, never a trap.
 func (r *Repo) Stop(in hookio.Input) hookio.Decision {
 	if in.StopHookActive {
 		return hookio.Decision{}
@@ -560,8 +393,8 @@ func (r *Repo) Stop(in hookio.Input) hookio.Decision {
 		return hookio.Decision{}
 	}
 	if len(changed) > 0 {
-		return hookio.Decision{Block: fmt.Sprintf("reliab: product code changed since the last report (%s). "+
-			"Run reliab verify --tier inner and act on reliab report route before stopping (R8).", summarize(changed))}
+		return hookio.Decision{Block: fmt.Sprintf("reliab reminder: product code changed since the last report (%s). "+
+			"Run reliab verify --tier inner and act on reliab report route, or say why not and stop again (R8).", summarize(changed))}
 	}
 	if rep == nil {
 		return hookio.Decision{}
@@ -569,8 +402,8 @@ func (r *Repo) Stop(in hookio.Input) hookio.Decision {
 	// A command that needs tests named has not run: the change is not
 	// verified until the agent names them (knowledge/decisions/named-tests.md).
 	if waiting := rep.NeedsInput(); len(waiting) > 0 {
-		return hookio.Decision{Block: fmt.Sprintf("reliab: the %s report is incomplete: %s. "+
-			"Name the tests that guard the change and re-run reliab verify --tier %s before stopping.", rep.Run.Tier, needsInputText(waiting), rep.Run.Tier)}
+		return hookio.Decision{Block: fmt.Sprintf("reliab reminder: the %s report is incomplete: %s. "+
+			"Name the tests that guard the change and re-run reliab verify --tier %s.", rep.Run.Tier, needsInputText(waiting), rep.Run.Tier)}
 	}
 	var owed []string
 	for _, f := range rep.Findings {
@@ -579,7 +412,7 @@ func (r *Repo) Stop(in hookio.Input) hookio.Decision {
 		}
 	}
 	if len(owed) > 0 {
-		return hookio.Decision{Block: fmt.Sprintf("reliab: open findings still need you: %s. "+
+		return hookio.Decision{Block: fmt.Sprintf("reliab reminder: open findings still need you: %s. "+
 			"Run reliab report route; classify, fix, and re-run reliab verify.", summarize(owed))}
 	}
 	return hookio.Decision{}
@@ -706,22 +539,19 @@ func (r *Repo) changedSinceSessionStart(session string) []string {
 	return strings.Fields(string(out))
 }
 
-// SessionStart briefs the agent: the profile, the rules it works under, and
-// the open findings in the latest report. It also anchors the session, so
-// Stop can see changes the session commits before any report exists.
+// SessionStart briefs the agent: the profile, the testing workflow, and the
+// open findings in the latest report. It also anchors the session, so Stop
+// can see changes the session commits before any report exists.
 func (r *Repo) SessionStart(in hookio.Input) hookio.Decision {
 	r.anchorSession(in.SessionID)
 	var b strings.Builder
 	p := r.Profile
 	fmt.Fprintf(&b, "This repository uses reliab (profile %s, starting condition %s).\n", p.Name, p.StartingCondition)
-	b.WriteString(`Rules:
-- Run reliab verify --tier inner when a change is done (not after each file edit) and --tier prepr before a PR; act on reliab report route.
-- A failing test is a finding: fix product code, never an assertion, tolerance, or catch block (R1).
-- Never edit protected oracles: ` + strings.Join(p.ProtectedPaths, ", ") + protectedCommandsRule(p.ProtectedCommands) + protectedEditsRule(p.ProtectedEdits) + ` (R2). A property's saved failing case under one is committed with its fix; then a person runs reliab approve, never you.
-- Every property cites its source of intent in a comment (R3).
-- Reproduce, shrink, and classify every failure before reporting: reliab findings classify (R4).
-- Behavior a snapshot pins is escalated to a human, never fixed (R9).
-- Before a PR, after a clean prepr, have the ` + ReviewerAgent + ` agent review the change; never run reliab report verdict yourself.
+	b.WriteString(`Workflow:
+- Run reliab verify --tier inner when a change is done and --tier prepr before it merges; act on reliab report route.
+- A failing test is a finding: reproduce it, fix product code (never an assertion or tolerance), or classify it with reliab findings classify.
+- Every property cites its source of intent in a comment.
+- Protected oracles change only with a person's approval: never edit ` + strings.Join(p.ProtectedPaths, ", ") + protectedCommandsRule(p.ProtectedCommands) + protectedEditsRule(p.ProtectedEdits) + ` (R2).
 `)
 	// The plugin launcher exports its version; the repository pins one for CI.
 	if plugin := os.Getenv("RELIAB_PLUGIN_VERSION"); plugin != "" {

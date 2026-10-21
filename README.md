@@ -31,7 +31,7 @@ the harness rather than the prompt.
    ```
 
    `init` writes a `reliability-profile.yaml` skeleton, adds `.reliab/` to
-   `.gitignore`, merges deny rules, the plugin, and its marketplace into
+   `.gitignore`, merges the plugin and its marketplace into
    `.claude/settings.json`, adds the testing rules to `AGENTS.md`, and pins
    the version in `.reliab-version`. It keeps what is already there and is
    safe to re-run after changing `protected_paths`.
@@ -97,7 +97,7 @@ Before a branch merges into main, by a PR or locally, and once the change is
 committed, the plugin's `reliab:reviewer` agent re-runs the pre-PR tier in
 a clean worktree, reads the diff, and records a verdict that only it may
 write (`reliab report verdict`); with `require_reviewer_verdict: true` the
-push gate needs a pass for the current tree. The PR's evidence section is
+pre-push reminder asks for a pass for the current tree. The PR's evidence section is
 pasted from the report, not written by the agent:
 
 ```sh
@@ -173,12 +173,14 @@ Code with `claude --plugin-dir <extracted>/plugin`. The launcher still
 installs its version into the cache on first use; set `RELIAB_BIN` to the
 extracted `reliab` binary to run that one instead.
 
-### Limits of in-session enforcement
+### What the hooks do
 
-Hooks and deny rules are best-effort. On native Windows the Claude Code
-sandbox is unavailable, so shell writes to protected paths are caught only by
-a heuristic hook. A user who bypasses permissions weakens all of it. The CI
-gates above are authoritative.
+The hooks remind and never block. Session start briefs the workflow and
+open findings; a stop with unverified product changes gets one nudge; a push
+or PR gets a note on what the pre-PR report lacks; and an edit to a
+protected path, a person-only reliab command, or a match for the profile's
+`protected_commands` or `protected_edits` gets a note that a person approves
+it. The CI gates above are authoritative.
 
 ## Develop
 

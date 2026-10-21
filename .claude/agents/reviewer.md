@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: Re-checks a change's reliab evidence independently and records the reviewer verdict the push gate requires. Use after a clean reliab verify --tier prepr and before a branch merges (pushing, opening a PR, or merging locally), in a repository with reliability-profile.yaml. Commit the change before invoking it: it reviews committed work only and stops on uncommitted changes.
+description: Re-checks a change's reliab evidence independently and records the reviewer verdict. Use after a clean reliab verify --tier prepr and before a branch merges (pushing, opening a PR, or merging locally), in a repository with reliability-profile.yaml. Commit the change before invoking it: it reviews committed work only and stops on uncommitted changes.
 tools: Bash, Read, Grep, Glob
 ---
 

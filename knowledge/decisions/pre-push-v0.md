@@ -2,7 +2,7 @@
 type: Decision
 title: "v0 pre-push gate without a reviewer verdict"
 description: "Pre-push requires a fresh, complete pre-PR report with no blocking findings; the verdict check waits behind a flag."
-status: stable
+status: deprecated
 tags: [hooks, departure]
 generated:
   by: claude-code/claude-opus-5-5
@@ -10,6 +10,8 @@ generated:
 ---
 
 # v0 pre-push gate without a reviewer verdict
+
+> Deprecated 2026-10-21: replaced by [light-guardrails](/decisions/light-guardrails.md).
 
 ## Context
 

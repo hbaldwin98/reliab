@@ -47,8 +47,8 @@ func TestPreEdit(t *testing.T) {
 	t.Parallel()
 	r := open(t, passing)
 	tests := []struct {
-		path string
-		deny bool
+		path   string
+		remind bool
 	}{
 		{"snapshots/s.txt", true},
 		{filepath.Join(r.Root, "snapshots", "new.txt"), true},
@@ -58,27 +58,27 @@ func TestPreEdit(t *testing.T) {
 	}
 	for _, tt := range tests {
 		d := r.PreEdit(hookio.Input{Cwd: r.Root, ToolInput: hookio.ToolInput{FilePath: tt.path}})
-		if (d.Deny != "") != tt.deny {
-			t.Errorf("%s: deny=%q, want deny=%v", tt.path, d.Deny, tt.deny)
+		if d.Deny != "" {
+			t.Errorf("%s: denied: %s", tt.path, d.Deny)
+		}
+		if (d.Context != "") != tt.remind {
+			t.Errorf("%s: reminder=%q, want reminder=%v", tt.path, d.Context, tt.remind)
 		}
 	}
 }
 
+// knowledge/decisions/light-guardrails.md: the hooks remind and never deny.
+// A person-only reliab command, run as a command, gets a reminder; shell
+// writes are not inspected, and reliab's words as data stay quiet.
 func TestPreBashProtectedAndAck(t *testing.T) {
 	t.Parallel()
 	r := open(t, passing)
 	tests := []struct {
-		cmd  string
-		deny bool
+		cmd    string
+		remind bool
 	}{
-		{"sed -i s/s/x/ snapshots/s.txt", true},
-		{"echo x > snapshots/s.txt", true},
-		{"echo x >> ./snapshots/s.txt", true},
-		{"rm -rf snapshots", true},
-		{"cp /tmp/x snapshots/s.txt", true},
-		{`Set-Content snapshots\s.txt x`, true},
-		{"git checkout -- snapshots/s.txt", true},
-		{"echo hi > .reliab/reports/prepr-latest.json", true},
+		{"echo x > snapshots/s.txt", false},
+		{"rm -rf snapshots", false},
 		{"reliab findings ack F-x --by human:me", true},
 		// The baseline is a protected oracle a person writes (R2,
 		// knowledge/decisions/mutation-threshold.md); proposing is the agent's.
@@ -86,40 +86,35 @@ func TestPreBashProtectedAndAck(t *testing.T) {
 		{"reliab baseline propose --scope 'src/**'", false},
 		{`& "C:\tools\reliab.exe" findings ack F-x --by human:me`, true},
 		// knowledge/decisions/protected-path-approval.md: approving a
-		// protected change is a person's decision, denied to every agent.
+		// protected change is a person's decision.
 		{"reliab approve snapshots/s.txt --by human:me", true},
 		{`& "C:\tools\reliab.exe" approve snapshots/s.txt --by human:me`, true},
 		{"cd x && RELIAB=1 reliab.cmd  APPROVE tests/seed --by human:me", true},
+		{"go test ./... && reliab findings ack F-x --by human:me", true},
+		{"git status; reliab approve x --by human:me", true},
+		{"git status\nreliab approve x --by human:me", true},
+		{"/usr/local/bin/reliab approve x --by human:me", true},
 		{"reliab gate protected --base main", false},
 		{"cat snapshots/s.txt", false},
-		{"grep -r foo snapshots", false},
 		{"go test ./... > /dev/null", false},
-		{"echo x > src/a/a.txt", false},
 		{"reliab findings classify F-x --kind harness-defect --reason r", false},
-		// knowledge/decisions/hook-decisions-v0.md: a path is a write target
-		// only in its own simple command, as a redirection target or after a
-		// write verb. Each read below was denied in an onboarding session
-		// because a write verb appeared elsewhere in the command line.
-		{`python -c "import json; json.load(open('.reliab/reports/prepr-latest.json'))"`, false},
-		{`python -c "import json; json.load(open('.reliab/reports/prepr-latest.json'))" && rm -f /tmp/x`, false},
-		{"git diff -- '*.verified.*'", false},
-		{"git diff -- '*.verified.*' | tee /tmp/d.txt", false},
-		{"git checkout -b next && git diff main -- '*.verified.*'", false},
-		{"ls .reliab/out/x", false},
-		{"ls .reliab/out/x; rm -rf /tmp/out", false},
-		{"sed -i s/a/b/ notes.txt && cat snapshots/s.txt", false},
-		{"cat snapshots/s.txt >> notes.txt", false},
-		// ...while every write in a compound command is still seen.
-		{"ls src && rm snapshots/s.txt", true},
-		{"cat x | tee snapshots/s.txt", true},
-		{"git status; echo x > .reliab/approvals.json", true},
-		{"git status\nsed -i s/s/x/ snapshots/s.txt", true},
-		{"go build ./... || cp /tmp/x 'snapshots/new.txt'", true},
+		// The person-only words as data, not a command: commit messages and
+		// arguments that name them drew denials in real sessions (retro
+		// 2026-10-20).
+		{`git commit -m "a person runs reliab approve, never the agent"`, false},
+		{"git commit -F - <<'EOF'\nGuard: remind\n\nreliab findings ack is a person's.\nEOF", false},
+		{"git commit -F - <<'EOF'\nmsg\nEOF\nreliab approve x --by human:me", true},
+		{`grep -rn "reliab approve" docs`, false},
+		{`echo "run: reliab report verdict"`, false},
+		{`git commit -m "reliab: report verdict text"`, false},
 	}
 	for _, tt := range tests {
 		d := r.PreBash(hookio.Input{Cwd: r.Root, ToolInput: hookio.ToolInput{Command: tt.cmd}})
-		if (d.Deny != "") != tt.deny {
-			t.Errorf("%q: deny=%q, want deny=%v", tt.cmd, d.Deny, tt.deny)
+		if d.Deny != "" || d.Block != "" {
+			t.Errorf("%q: blocked: %+v", tt.cmd, d)
+		}
+		if (d.Context != "") != tt.remind {
+			t.Errorf("%q: reminder=%q, want reminder=%v", tt.cmd, d.Context, tt.remind)
 		}
 	}
 }
@@ -128,23 +123,28 @@ func push(r *Repo, cmd string) hookio.Decision {
 	return r.PreBash(hookio.Input{Cwd: r.Root, ToolInput: hookio.ToolInput{Command: cmd}})
 }
 
+// knowledge/decisions/light-guardrails.md: a push or PR creation is never
+// denied; the agent is reminded of what the pre-PR report lacks.
 func TestPrePush(t *testing.T) {
 	t.Parallel()
 	r := open(t, passing)
-	if d := push(r, "git push origin main"); !strings.Contains(d.Deny, "no pre-PR report") {
+	if d := push(r, "git push origin main"); !strings.Contains(d.Context, "no pre-PR report") {
 		t.Fatalf("without a report: %+v", d)
 	}
 	run(t, r, "prepr")
 	for _, cmd := range []string{"git push origin main", "git status && git push", "gh pr create --fill"} {
-		if d := push(r, cmd); d.Deny != "" {
-			t.Errorf("%q after a clean prepr run: %s", cmd, d.Deny)
+		if d := push(r, cmd); d != (hookio.Decision{}) {
+			t.Errorf("%q after a clean prepr run: %+v", cmd, d)
 		}
 	}
 	testrepo.Write(t, r.Root, "src/a/a.txt", "edited")
-	for _, cmd := range []string{"git push", `bash -c "git push origin main"`} {
-		if d := push(r, cmd); !strings.Contains(d.Deny, "stale") {
+	for _, cmd := range []string{"git push", `bash -c "git push origin main"`, "git -C . push -u origin x"} {
+		if d := push(r, cmd); !strings.Contains(d.Context, "stale") {
 			t.Errorf("%q after an edit: %+v", cmd, d)
 		}
+	}
+	if d := push(r, "git status"); d != (hookio.Decision{}) {
+		t.Errorf("git status reminded: %+v", d)
 	}
 }
 
@@ -152,13 +152,13 @@ func TestPrePushOpenFindingsAndVerdict(t *testing.T) {
 	t.Parallel()
 	r := open(t, failing)
 	run(t, r, "prepr")
-	if d := r.PrePush(); !strings.Contains(d.Deny, "open finding") {
+	if d := r.PrePush(); !strings.Contains(d.Context, "open finding") {
 		t.Fatalf("with an open finding: %+v", d)
 	}
 
 	r = open(t, passing+"require_reviewer_verdict: true\n")
 	run(t, r, "prepr")
-	if d := r.PrePush(); !strings.Contains(d.Deny, "verdict") {
+	if d := r.PrePush(); !strings.Contains(d.Context, "verdict") {
 		t.Fatalf("without a required verdict: %+v", d)
 	}
 }
@@ -254,29 +254,32 @@ func TestSessionStart(t *testing.T) {
 }
 
 // A snapshot tool that approves by command names no protected path, so the
-// profile lists such commands and the hook denies them.
+// profile lists such commands and the hook reminds the agent of them.
 func TestPreBashProtectedCommands(t *testing.T) {
 	t.Parallel()
 	r := open(t, passing+`protected_commands: ['\bcargo\s+insta\s+(accept|review)\b', '\bINSTA_UPDATE=(always|auto|new|unseen)\b']`+"\n")
 	tests := []struct {
-		cmd  string
-		deny bool
+		cmd    string
+		remind bool
 	}{
 		{"cargo insta accept", true},
 		{"cargo insta review --workspace", true},
 		{"INSTA_UPDATE=always cargo test -p service", true},
-		{"$env:INSTA_UPDATE='always'; cargo test", false}, // PowerShell spelling: the profile must list it to deny it
+		{"$env:INSTA_UPDATE='always'; cargo test", false}, // PowerShell spelling: the profile must list it
 		{"INSTA_UPDATE=no cargo test -p service", false},
 		{"cargo insta test", false},
 		{"cargo test", false},
 	}
 	for _, tt := range tests {
 		d := r.PreBash(hookio.Input{Cwd: r.Root, ToolInput: hookio.ToolInput{Command: tt.cmd}})
-		if (d.Deny != "") != tt.deny {
-			t.Errorf("%q: deny=%q, want deny=%v", tt.cmd, d.Deny, tt.deny)
+		if d.Deny != "" {
+			t.Errorf("%q: denied: %s", tt.cmd, d.Deny)
 		}
-		if tt.deny && !strings.Contains(d.Deny, "characterization-diff") {
-			t.Errorf("%q: reason does not say what to do instead: %q", tt.cmd, d.Deny)
+		if (d.Context != "") != tt.remind {
+			t.Errorf("%q: reminder=%q, want reminder=%v", tt.cmd, d.Context, tt.remind)
+		}
+		if tt.remind && !strings.Contains(d.Context, "characterization-diff") {
+			t.Errorf("%q: reminder does not say what to do instead: %q", tt.cmd, d.Context)
 		}
 	}
 	if ctx := r.SessionStart(hookio.Input{}); !strings.Contains(ctx.Context, "never run commands matching") {
@@ -285,7 +288,7 @@ func TestPreBashProtectedCommands(t *testing.T) {
 }
 
 // knowledge/decisions/reviewer-verdict.md: only the reviewer subagent records
-// a verdict; the author session and any other agent are denied, as with
+// a verdict; the author session and any other agent are reminded, as with
 // findings ack.
 func TestPreBashVerdictOnlyForReviewer(t *testing.T) {
 	t.Parallel()
@@ -296,25 +299,29 @@ func TestPreBashVerdictOnlyForReviewer(t *testing.T) {
 		"cd /tmp && RELIAB_BIN=x reliab.cmd   report   verdict --outcome fail --by me --notes no",
 	}
 	for _, cmd := range cmds {
-		for _, agent := range []string{"", "reviewer", "other:reviewer", "general-purpose"} {
+		for _, agent := range []string{"", "other:reviewer", "general-purpose"} {
 			d := r.PreBash(hookio.Input{Cwd: r.Root, AgentType: agent, ToolInput: hookio.ToolInput{Command: cmd}})
-			if !strings.Contains(d.Deny, ReviewerAgent) {
-				t.Errorf("%q as agent %q: deny=%q, want a denial naming the reviewer", cmd, agent, d.Deny)
+			if d.Deny != "" || !strings.Contains(d.Context, ReviewerAgent) {
+				t.Errorf("%q as agent %q: %+v, want a reminder naming the reviewer", cmd, agent, d)
 			}
 		}
-		if d := r.PreBash(hookio.Input{Cwd: r.Root, AgentType: ReviewerAgent, ToolInput: hookio.ToolInput{Command: cmd}}); d.Deny != "" {
-			t.Errorf("%q as the reviewer: %s", cmd, d.Deny)
+		// The project copy of the reviewer (.claude/agents/reviewer.md) is
+		// named without the plugin prefix.
+		for _, agent := range []string{ReviewerAgent, "reviewer"} {
+			if d := r.PreBash(hookio.Input{Cwd: r.Root, AgentType: agent, ToolInput: hookio.ToolInput{Command: cmd}}); d != (hookio.Decision{}) {
+				t.Errorf("%q as %s: %+v", cmd, agent, d)
+			}
 		}
 	}
 	for _, cmd := range []string{"reliab report summary", "reliab report route"} {
-		if d := r.PreBash(hookio.Input{Cwd: r.Root, ToolInput: hookio.ToolInput{Command: cmd}}); d.Deny != "" {
-			t.Errorf("%q: %s", cmd, d.Deny)
+		if d := r.PreBash(hookio.Input{Cwd: r.Root, ToolInput: hookio.ToolInput{Command: cmd}}); d != (hookio.Decision{}) {
+			t.Errorf("%q: %+v", cmd, d)
 		}
 	}
 }
 
-// The push gate accepts only a passing verdict for the report's own tree; an
-// edit after the review makes the report stale.
+// The pre-push reminder is quiet only for a passing verdict on the report's
+// own tree; an edit after the review makes the report stale.
 func TestPrePushVerdictBoundToTree(t *testing.T) {
 	t.Parallel()
 	r := open(t, passing+"require_reviewer_verdict: true\n")
@@ -327,23 +334,23 @@ func TestPrePushVerdictBoundToTree(t *testing.T) {
 		}
 	}
 	setVerdict(report.VerdictFail, rep.Run.TreeHash)
-	if d := r.PrePush(); !strings.Contains(d.Deny, "verdict is fail") {
+	if d := r.PrePush(); !strings.Contains(d.Context, "verdict is fail") {
 		t.Errorf("failing verdict: %+v", d)
 	}
 	setVerdict(report.VerdictPass, strings.Repeat("0", 40))
-	if d := r.PrePush(); !strings.Contains(d.Deny, "another tree") {
+	if d := r.PrePush(); !strings.Contains(d.Context, "another tree") {
 		t.Errorf("verdict for another tree: %+v", d)
 	}
 	setVerdict(report.VerdictPass, "")
-	if d := r.PrePush(); !strings.Contains(d.Deny, "another tree") {
+	if d := r.PrePush(); !strings.Contains(d.Context, "another tree") {
 		t.Errorf("verdict bound to no tree: %+v", d)
 	}
 	setVerdict(report.VerdictPass, rep.Run.TreeHash)
-	if d := r.PrePush(); d.Deny != "" {
-		t.Errorf("passing verdict for this tree: %s", d.Deny)
+	if d := r.PrePush(); d != (hookio.Decision{}) {
+		t.Errorf("passing verdict for this tree: %+v", d)
 	}
 	testrepo.Write(t, r.Root, "src/a/a.txt", "edited after review")
-	if d := r.PrePush(); !strings.Contains(d.Deny, "stale") {
+	if d := r.PrePush(); !strings.Contains(d.Context, "stale") {
 		t.Errorf("edit after review: %+v", d)
 	}
 }

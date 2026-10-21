@@ -11,6 +11,8 @@ generated:
 
 # Protected paths: four layers of enforcement
 
+> Amended 2026-10-21 by [light-guardrails](/decisions/light-guardrails.md): pre-bash no longer inspects shell writes, and a push is reminded, not denied.
+
 ## Context
 
 Checked against the Claude Code docs on 2026-10-17: `Edit(...)` deny rules

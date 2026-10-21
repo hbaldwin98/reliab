@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hbaldwin98/reliab/internal/doctor"
 	"github.com/hbaldwin98/reliab/internal/guard"
 	"github.com/hbaldwin98/reliab/internal/hookio"
 	"github.com/hbaldwin98/reliab/internal/testrepo"
@@ -79,18 +78,16 @@ func TestInitMergesExistingFiles(t *testing.T) {
 	if s.Model != "x" || s.Permissions.Deny[0] != "Bash(rm -rf /)" {
 		t.Errorf("existing settings lost: %+v", s)
 	}
-	// The profile predates self-protection, so init adds it to
-	// protected_paths, and the committed profile gets its deny rule
-	// (knowledge/decisions/protected-path-approval.md).
-	want := []string{"Bash(rm -rf /)", "Edit(/.reliab/**)", "Edit(/snapshots/**)", "Edit(**/golden/**)", "Edit(/reliability-profile.yaml)"}
-	if strings.Join(s.Permissions.Deny, ",") != strings.Join(want, ",") {
-		t.Errorf("deny = %v, want %v", s.Permissions.Deny, want)
+	// knowledge/decisions/light-guardrails.md: init adds no deny rules; the
+	// user's own stay.
+	if strings.Join(s.Permissions.Deny, ",") != "Bash(rm -rf /)" {
+		t.Errorf("deny = %v, want only the user's rule", s.Permissions.Deny)
 	}
 	if len(s.Permissions.Allow) != 1 || !s.EnabledPlugins[PluginID] {
 		t.Errorf("allow %v, plugins %v", s.Permissions.Allow, s.EnabledPlugins)
 	}
-	if s.Sandbox.Enabled != nil || strings.Join(s.Sandbox.Filesystem.DenyWrite, ",") != "./snapshots" {
-		t.Errorf("sandbox = %+v; init must not enable it and maps only dir/** globs", s.Sandbox)
+	if s.Sandbox.Enabled != nil || len(s.Sandbox.Filesystem.DenyWrite) != 0 {
+		t.Errorf("sandbox = %+v; init must not touch it", s.Sandbox)
 	}
 
 	agents := read(t, root, "AGENTS.md")
@@ -104,17 +101,11 @@ func TestInitMergesExistingFiles(t *testing.T) {
 		t.Error("a second init duplicated the rules section")
 	}
 
-	for _, c := range doctor.Run(root) {
-		if c.Name == "deny rules" && c.Status != doctor.OK {
-			t.Errorf("doctor after init: %+v", c)
-		}
-	}
 }
 
 // knowledge/decisions/protected-path-approval.md: the profile init writes
-// guards itself once the person commits it. Until then the agent
-// onboarding the repository writes it; after, the hooks and the deny rules
-// cover it.
+// is protected once the person commits it. Until then the agent onboarding
+// the repository writes it; after, the pre-edit hook reminds the agent.
 func TestInitProtectsTheProfileOnceCommitted(t *testing.T) {
 	root := t.TempDir()
 	testrepo.Git(t, root, "init", "-q", "-b", "main")
@@ -133,30 +124,13 @@ func TestInitProtectsTheProfileOnceCommitted(t *testing.T) {
 		}
 		return r.PreEdit(hookio.Input{Cwd: root, ToolInput: hookio.ToolInput{FilePath: "reliability-profile.yaml"}})
 	}
-	const rule = "Edit(/reliability-profile.yaml)"
-	if d := editProfile(); d.Deny != "" {
-		t.Errorf("uncommitted profile denied: %s", d.Deny)
-	}
-	if strings.Contains(read(t, root, ".claude/settings.json"), rule) {
-		t.Error("uncommitted profile has a deny rule")
+	if d := editProfile(); d != (hookio.Decision{}) {
+		t.Errorf("uncommitted profile: %+v", d)
 	}
 
 	testrepo.Git(t, root, "add", "-A")
 	testrepo.Git(t, root, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qm", "onboard")
-	if d := editProfile(); d.Deny == "" {
-		t.Error("committed profile not denied")
-	}
-	asked := false
-	for _, c := range doctor.Run(root) {
-		asked = asked || c.Name == "deny rules" && c.Status == doctor.Warn && strings.Contains(c.Detail, rule)
-	}
-	if !asked {
-		t.Errorf("doctor after the commit does not ask for %s", rule)
-	}
-	if _, _, err := Init(root, Options{}); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(read(t, root, ".claude/settings.json"), rule) {
-		t.Errorf("re-run init did not add %s", rule)
+	if d := editProfile(); d.Deny != "" || d.Context == "" {
+		t.Errorf("committed profile: %+v, want a reminder", d)
 	}
 }

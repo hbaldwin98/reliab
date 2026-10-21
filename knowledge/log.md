@@ -1,5 +1,8 @@
 # Update Log
 
+## 2026-10-21
+* **Creation**: Added [light-guardrails](/decisions/light-guardrails.md): hooks remind and never deny: an edit to a protected path, a person-only reliab command at a command position, a protected command or edit, and a push each get a reminder, a stop one nudge; `reliab profile init` writes no permission deny rules. The shell reader `internal/guard/effects` and the dev shell-write hook are removed. [command-effects](/decisions/command-effects.md) and [pre-push-v0](/decisions/pre-push-v0.md) are deprecated; AGENTS.md and its template are cut to the testing workflow.
+
 ## 2026-10-20
 * **Update**: [own-ci-checks](/decisions/own-ci-checks.md): the release gate takes a version bump that also adds the release's line to `knowledge/log.md`, as two of five past release commits did, and a refusal names what else the commit changes; the README install test allows the version plugin.json held before its last change, so commits between the bump and the README update neither fail it nor leave go test's cache with a stale pass. Both found by review.
 * **Creation**: Added [own-ci-checks](/decisions/own-ci-checks.md): reliab's own CI calls scripts that run locally: `scripts/lint.sh` (gofmt, `git diff --check`, control bytes and CR in tracked text, golangci-lint pinned in `tools/go.mod`) as a blocking job; `scripts/check-names.sh` (noreply authors, and names from the `NAME_DENYLIST` secret, skipped without it); tests with `GIT_CONFIG_GLOBAL=/dev/null`; and `scripts/release-gate.sh`, which publishes a tag only on a commit ci passed on, or a version bump alone on one. A repocheck test holds the README's install lines to plugin.json's version outside the bump commit.
