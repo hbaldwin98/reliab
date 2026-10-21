@@ -34,3 +34,5 @@
 - If nothing states the behavior, do not pin it: classify it `requirement-silent` with the question.
 - If no test can kill it because it cannot change behavior, classify it `equivalent-mutant` with a one-line reason.
 <!-- reliab:end -->
+
+Developing reliab on Windows: read [docs/windows.md](docs/windows.md) first.
