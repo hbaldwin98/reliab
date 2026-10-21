@@ -1,12 +1,15 @@
 # Publishes binaries and checksums for a vX.Y.Z tag. The tag must match the
 # plugin version committed in plugin/.claude-plugin/plugin.json, so the
-# plugin launcher and the release agree.
+# plugin launcher and the release agree, and the ci workflow must have passed
+# on the tag's commit (scripts/release-gate.sh).
 name: release
 on:
   push:
     tags: ["v*"]
 permissions:
   contents: write
+  # release-gate.sh reads the ci workflow's runs.
+  actions: read
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -14,6 +17,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Check ci passed on this commit
+        run: scripts/release-gate.sh "$GITHUB_SHA"
+        env:
+          GH_TOKEN: ${{ github.token }}
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -22,6 +29,8 @@ jobs:
           plugin=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' plugin/.claude-plugin/plugin.json)
           [ "v$plugin" = "$GITHUB_REF_NAME" ] || { echo "plugin.json is $plugin, tag is $GITHUB_REF_NAME"; exit 1; }
       - run: go test -timeout 300s ./...
+        env:
+          GIT_CONFIG_GLOBAL: /dev/null
       - uses: goreleaser/goreleaser-action@v6
         with:
           # The version the archives were checked with (README "Release").
