@@ -25,7 +25,16 @@ generated:
      ([protected-path-approval](/decisions/protected-path-approval.md)); deny
      `reliab report verdict` unless the caller's `agent_type` is
      `reliab:reviewer` ([reviewer-verdict](/decisions/reviewer-verdict.md)).
-     These match only text Bash may run. A Bash line whose every simple
+     They match however the line spells the command: each simple
+     command's words are read past quotes and escapes (a PowerShell
+     backtick too), any word whose base name is `reliab` (with `.exe`,
+     `.cmd`, `.bat`, or `.ps1`, in any case) or a variable that may hold
+     it starts a command, and its command path is found as cobra finds
+     it, past global flags and the word after a flag with no `=`. Until
+     2026-10-20 they matched the words as typed, so `reliab "findings"
+     ack`, `relib findings ack`, `reliab --repo . findings ack`, and
+     `$r findings ack` passed; an alias or function wrapping `reliab` still
+     does. These match only text Bash may run. A Bash line whose every simple
      command is `echo`, `cat`, `grep`, or `git add|commit|tag|notes|status|log|show|diff`
      has its arguments and heredoc bodies blanked first, unless any command
      on it holds, outside quotes, a comment, `$'`, parentheses, braces, a

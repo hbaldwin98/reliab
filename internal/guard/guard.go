@@ -300,17 +300,21 @@ func (r *Repo) PreBash(in hookio.Input) hookio.Decision {
 	if in.ToolName == "Bash" {
 		code = codeText(cmd)
 	}
-	if ackCmd.MatchString(code) {
+	// The regexes catch reliab's words inside quoted code (bash -c "...");
+	// personOnly reads the words past quoting, escapes, global flags, and a
+	// variable naming the binary (personcmd.go).
+	person := personOnly(code, in.ToolName == "PowerShell")
+	if ackCmd.MatchString(code) || person == "findings ack" {
 		return hookio.Decision{Deny: "reliab: findings ack records a human decision; only a person runs it. Ask the user."}
 	}
-	if baselineWrite.MatchString(code) {
+	if baselineWrite.MatchString(code) || person == "baseline write" {
 		return hookio.Decision{Deny: "reliab: baseline write changes the protected mutation baseline (R2); only a person runs it. Show the user reliab baseline propose and ask."}
 	}
-	if approveCmd.MatchString(code) {
+	if approveCmd.MatchString(code) || person == "approve" {
 		return hookio.Decision{Deny: "reliab: approve records a person's approval of a protected-path change (R2); only a person runs it. " +
 			"List the change under questions for a human and stop; the user runs reliab approve <path> --by human:<name>."}
 	}
-	if verdictCmd.MatchString(code) && in.AgentType != ReviewerAgent {
+	if (verdictCmd.MatchString(code) || person == "report verdict") && in.AgentType != ReviewerAgent {
 		return hookio.Decision{Deny: "reliab: report verdict is the reviewer's to record, never the author's. " +
 			"After a clean reliab verify --tier prepr, have the " + ReviewerAgent + " agent review the change; it records the verdict."}
 	}
