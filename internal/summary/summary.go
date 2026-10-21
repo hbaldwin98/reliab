@@ -320,29 +320,11 @@ func notInTier(p *profile.Profile, r *report.Report) []string {
 // the current HEAD, started before this report. For each finding id the
 // latest such run wins.
 func earlier(opt Options, profileBase string, r *report.Report, s *Summary) {
-	base, err := gitx.ResolveBase(opt.Root, opt.Base, profileBase)
+	runs, base, err := report.BranchHistory(opt.Root, opt.Base, profileBase, started(r))
+	s.Base = base
 	if err != nil {
 		s.BaseError = err.Error()
 		return
-	}
-	s.Base = base
-	mb, err := gitx.MergeBase(opt.Root, base)
-	if err != nil {
-		s.BaseError = fmt.Sprintf("no merge base with %s: %v", base, err)
-		return
-	}
-	head := gitx.Head(opt.Root)
-	onBranch := map[string]bool{}
-	inBranch := func(h string) bool {
-		if h == "" {
-			return false
-		}
-		if v, ok := onBranch[h]; ok {
-			return v
-		}
-		v := gitx.IsAncestor(opt.Root, mb, h) && gitx.IsAncestor(opt.Root, h, head)
-		onBranch[h] = v
-		return v
 	}
 	now := map[string]bool{}
 	for _, f := range r.Findings {
@@ -354,15 +336,9 @@ func earlier(opt Options, profileBase string, r *report.Report, s *Summary) {
 	}
 	last := map[string]Item{}
 	var order []string
-	for _, h := range report.History(opt.Root) {
-		// Later runs do not count. This report is in the history too, but
-		// its findings are all current, so it adds nothing.
-		if started(h).After(started(r)) {
-			continue
-		}
-		if !inBranch(h.Run.Head) {
-			continue
-		}
+	// This report is in the history too, but its findings are all current,
+	// so it adds nothing.
+	for _, h := range runs {
 		for _, f := range h.Findings {
 			if now[f.ID] {
 				continue

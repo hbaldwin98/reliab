@@ -27,8 +27,9 @@ a finding fixed in between leaves it. Found in step 3's real-use
 acceptance: two classified findings were fixed, prepr re-ran, and their
 classifications existed nowhere, so the PR summary listed them as fixed
 but `unclassified`. A finding no latest report holds can still be
-classified: `classify` then records it on the newest history report that
-holds it and clears the latest pre-PR verdict
+classified: `classify` then records it on the newest history report of
+this branch that holds it, the run the PR summary reads, and clears the
+latest pre-PR verdict
 ([finding-classification](/decisions/finding-classification.md)). History
 files written earlier read as before; their lost classifications are not
 recovered.
