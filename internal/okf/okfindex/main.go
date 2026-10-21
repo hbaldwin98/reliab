@@ -6,6 +6,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -13,17 +14,19 @@ import (
 )
 
 func main() {
-	root := "knowledge"
-	if len(os.Args) > 1 {
-		root = os.Args[1]
-	}
-	if err := run(root); err != nil {
+	if err := run(os.Args[1:], os.Stderr); err != nil {
 		fmt.Fprintln(os.Stderr, "okfindex:", err)
 		os.Exit(1)
 	}
 }
 
-func run(root string) error {
+// run regenerates the indexes of the bundle args names, default knowledge,
+// saying on log which files it wrote.
+func run(args []string, log io.Writer) error {
+	root := "knowledge"
+	if len(args) > 0 {
+		root = args[0]
+	}
 	fsys := os.DirFS(root)
 	dirs, headings, err := okf.Sections(fsys)
 	if err != nil {
@@ -41,7 +44,7 @@ func run(root string) error {
 		if err := os.WriteFile(path, want, 0o644); err != nil {
 			return err
 		}
-		fmt.Fprintln(os.Stderr, "okfindex: wrote", path)
+		fmt.Fprintln(log, "okfindex: wrote", path)
 	}
 	return nil
 }
