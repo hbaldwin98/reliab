@@ -1,5 +1,5 @@
 {
   "name": "reliab",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Run the evidence stack inside the edit loop and enforce the agent testing contract."
 }
