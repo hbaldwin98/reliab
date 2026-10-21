@@ -20,6 +20,7 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 
 	"github.com/hbaldwin98/reliab/internal/adapters"
+	"github.com/hbaldwin98/reliab/internal/carry"
 	"github.com/hbaldwin98/reliab/internal/profile"
 	"github.com/hbaldwin98/reliab/internal/report"
 )
@@ -117,21 +118,15 @@ func Checks(id string, s *report.Score) []Check {
 	return out
 }
 
-// Apply scores every mutation command in rep and replaces its
-// below-threshold findings with one per check that falls short. A
-// shortfall with the same numbers keeps a person's acknowledgement; new
-// numbers are a new finding.
-func Apply(rep *report.Report, p *profile.Profile, b *Baseline) {
-	acked := map[string]*report.Acknowledged{}
+// Score scores every mutation command in rep and replaces its
+// below-threshold findings with one per check that falls short, each open:
+// keeping a decision across runs is the carry rule's (internal/carry).
+func Score(rep *report.Report, p *profile.Profile, b *Baseline) {
 	kept := make([]report.Finding, 0, len(rep.Findings))
 	for _, f := range rep.Findings {
-		if f.Kind == report.KindBelowThreshold {
-			if f.Acknowledged != nil {
-				acked[f.ID] = f.Acknowledged
-			}
-			continue
+		if f.Kind != report.KindBelowThreshold {
+			kept = append(kept, f)
 		}
-		kept = append(kept, f)
 	}
 	var short []report.Finding
 	for i := range rep.Run.Commands {
@@ -141,17 +136,22 @@ func Apply(rep *report.Report, p *profile.Profile, b *Baseline) {
 		}
 		c.Score = Compute(*c, kept, p, b)
 		for _, ch := range Checks(c.ID, c.Score) {
-			if !ch.Below() {
-				continue
+			if ch.Below() {
+				short = append(short, Shortfall(ch, *c, kept))
 			}
-			f := Shortfall(ch, *c, kept)
-			if a := acked[f.ID]; a != nil {
-				f.Acknowledged, f.Status = a, report.StatusAcknowledged
-			}
-			short = append(short, f)
 		}
 	}
 	rep.Findings = append(kept, short...)
+}
+
+// Apply rescores rep in place (Score) and keeps the decisions it already
+// recorded, through the carry rule: a shortfall with the same numbers has
+// the same id and keeps a person's acknowledgement; new numbers are a new
+// finding.
+func Apply(rep *report.Report, p *profile.Profile, b *Baseline) {
+	own := carry.Collect([]*report.Report{rep})
+	Score(rep, p, b)
+	own.Apply(rep)
 }
 
 // shownSurvivors is how many survivors a shortfall's message names before

@@ -175,8 +175,10 @@ func (e *NotRescored) Error() string {
 		strings.Join(e.Reasons, "; ") + "); fix it and re-run reliab verify"
 }
 
-// rescore recomputes a report's mutation scores and shortfalls. A report
-// with no mutation counts has nothing to recompute.
+// rescore recomputes a report's mutation scores and shortfalls, keeping the
+// decisions the report records through the carry rule (mutscore.Apply), so
+// a shortfall whose numbers stay the same keeps its acknowledgement. A
+// report with no mutation counts has nothing to recompute.
 func rescore(root string, r *report.Report) error {
 	scored := false
 	for _, c := range r.Run.Commands {
