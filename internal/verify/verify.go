@@ -344,6 +344,16 @@ func Run(ctx context.Context, opt Options) (*report.Report, string, error) {
 			}
 		}
 	}
+	// A tree that changed while the commands ran leaves a report that
+	// vouches for no tree, even if the change is later undone.
+	end, err := gitx.TreeHash(opt.Root, prof.TreeExclude())
+	if err != nil {
+		return nil, "", err
+	}
+	if end != tree {
+		rep.Run.TreeHashEnd = end
+		fmt.Fprintln(opt.Log, "the working tree changed while this run ran; the report is stale: re-run once edits stop")
+	}
 	rep.Run.ElapsedSec = round(opt.Now().Sub(start).Seconds())
 	path, err := report.Write(opt.Root, rep)
 	if err != nil {

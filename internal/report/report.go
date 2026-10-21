@@ -18,7 +18,7 @@ import (
 )
 
 // SchemaVersion is the report schema version this build writes.
-const SchemaVersion = "0.11.0"
+const SchemaVersion = "0.12.0"
 
 // Dir is where reports live, relative to the repo root. Only reliab writes
 // here; see knowledge/decisions/report-storage.md.
@@ -79,6 +79,7 @@ type Run struct {
 	BudgetSec     int             `json:"budgetSec"`
 	Complete      bool            `json:"complete"`
 	TreeHash      string          `json:"treeHash"`
+	TreeHashEnd   string          `json:"treeHashEnd,omitempty"` // the tree at the end, only when it changed during the run
 	Head          string          `json:"head,omitempty"`
 	Seed          string          `json:"seed,omitempty"`
 	Base          string          `json:"base,omitempty"`
@@ -135,6 +136,13 @@ type ScopeScore struct {
 	// Unmeasured: the tool reported no per-file counts, so the scope's score
 	// is unknown.
 	Unmeasured bool `json:"unmeasured,omitempty"`
+}
+
+// FreshFor reports whether the report describes tree: it ran on tree and
+// the tree did not change while it ran
+// (knowledge/decisions/report-freshness.md).
+func (r *Report) FreshFor(tree string) bool {
+	return tree == r.Run.TreeHash && r.Run.TreeHashEnd == ""
 }
 
 // Percent is killed over counted, in percent; 0 when nothing was counted.
