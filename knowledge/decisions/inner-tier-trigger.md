@@ -24,7 +24,9 @@ The agent runs `reliab verify --tier inner` once a logical change is done,
 before it stops or hands back, and not after each file edit. The stop hook
 already enforces exactly this: it blocks stopping while product code changed
 since the last report ([hook-decisions-v0](/decisions/hook-decisions-v0.md)).
-`--tier prepr` before a PR is unchanged.
+`--tier prepr` before a PR is unchanged. (Since widened to before a branch
+merges into main, by a PR or locally:
+[dev-environment](/decisions/dev-environment.md).)
 
 ## Consequences
 

@@ -26,3 +26,14 @@ generated:
 - `log.md` gets a dated entry whenever concepts change.
 - A Go test checks conformance: parseable frontmatter, non-empty `type`,
   index/log structure; broken links warn, not fail.
+- Section indexes (`<section>/index.md`) are generated, not written by
+  hand: `go generate ./internal/okf` (or `go run ./internal/okf/okfindex`)
+  writes one entry per concept, its `title` linked to its file and then
+  ` - ` and its `description` from its frontmatter, in file-name order, under the root index's link text for the
+  section. A test fails when a checked-in index is out of date. Added
+  2026-10-20: hand-kept entries had drifted from five decisions'
+  descriptions and out of order, and two branches each appending an entry
+  conflicted. The root index stays hand-written.
+- `log.md` merges with git's `union` driver (`.gitattributes`), so two
+  branches that each add a line under the same date merge without a
+  conflict; check the merged order by eye.

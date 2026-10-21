@@ -5,3 +5,6 @@
 
 # reliab's own reports (only the binary writes these)
 /.reliab/
+
+# Dev builds the session-start hook puts on PATH (.claude/hooks)
+/.devbin/

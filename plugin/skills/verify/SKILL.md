@@ -1,6 +1,6 @@
 ---
 name: verify
-description: Run reliab verify when a code change is done and before a PR, then act on each finding by kind. Use when finishing a change in a repository with reliability-profile.yaml.
+description: Run reliab verify when a code change is done and before a branch merges into main, then act on each finding by kind. Use when finishing a change in a repository with reliability-profile.yaml.
 ---
 
 # Verify a change with reliab
@@ -15,10 +15,12 @@ budget and writes the one report everything else reads.
   `reliab verify --tier inner` (budget about 5 minutes). Not after each file
   edit; finish the change first. The stop hook blocks stopping while product
   code changed since the last report.
-- Before opening a PR or pushing: `reliab verify --tier prepr`. The push is
-  denied unless this report is fresh, complete, and has no open findings.
-  Then have the `reliab:reviewer` agent review the change, and write the PR
-  evidence with `reliab report summary`; the summary skill has the steps.
+- Before a branch merges into main (opening a PR, pushing, or merging
+  locally): `reliab verify --tier prepr`. The push is denied unless this
+  report is fresh, complete, and has no open findings. Then commit, have the
+  `reliab:reviewer` agent review the change (it reviews committed work
+  only), and for a PR write the evidence with `reliab report summary`; the
+  summary skill has the steps.
 
 ## Then
 

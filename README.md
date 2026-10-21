@@ -54,7 +54,7 @@ Day to day the agent runs, guided by the plugin's skills and hooks:
 
 ```sh
 reliab verify --tier inner      # when a change is done, before stopping (budget 5 min)
-reliab verify --tier prepr      # before a PR (budget 15 min)
+reliab verify --tier prepr      # before a branch merges into main (budget 15 min)
 reliab report route             # what to do about each finding
 reliab findings classify <id> --kind <kind> --reason "..."
 ```
@@ -93,7 +93,8 @@ reliab characterize discard                         # captures live in .reliab/ 
 
 The `characterize` skill drives this cycle.
 
-Before a PR, the plugin's `reliab:reviewer` agent re-runs the pre-PR tier in
+Before a branch merges into main, by a PR or locally, and once the change is
+committed, the plugin's `reliab:reviewer` agent re-runs the pre-PR tier in
 a clean worktree, reads the diff, and records a verdict that only it may
 write (`reliab report verdict`); with `require_reviewer_verdict: true` the
 push gate needs a pass for the current tree. The PR's evidence section is

@@ -10,6 +10,22 @@
       }
     }
   },
+  "env": {
+    "PYTHONUTF8": "1"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [{ "type": "command", "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/dev-session-start.sh\"", "timeout": 120 }]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [{ "type": "command", "command": "awk -f \"$CLAUDE_PROJECT_DIR/.claude/hooks/warn-shell-writes.awk\"", "timeout": 10 }]
+      }
+    ]
+  },
   "permissions": {
     "allow": [
       "Bash(reliab *)"
