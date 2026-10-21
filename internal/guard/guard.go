@@ -532,7 +532,7 @@ func (r *Repo) PrePush() hookio.Decision {
 	if fresh, err := r.fresh(rep); err != nil {
 		return hookio.Decision{Deny: "reliab: cannot check report freshness: " + err.Error()}
 	} else if !fresh {
-		return hookio.Decision{Deny: "reliab: the pre-PR report is stale; the code changed after it ran." + fix}
+		return hookio.Decision{Deny: "reliab: the pre-PR report is stale; the code changed while or after it ran." + fix}
 	}
 	if waiting := rep.NeedsInput(); len(waiting) > 0 {
 		return hookio.Decision{Deny: "reliab: the pre-PR report is incomplete: " + needsInputText(waiting) + "." + fix}
@@ -574,7 +574,7 @@ func (r *Repo) treeHash() (string, error) {
 
 func (r *Repo) fresh(rep *report.Report) (bool, error) {
 	h, err := r.treeHash()
-	return h == rep.Run.TreeHash, err
+	return rep.FreshFor(h), err
 }
 
 func countOpen(rep *report.Report) int {
@@ -637,10 +637,15 @@ func (r *Repo) productChangesSince(rep *report.Report, session string) ([]string
 		if err != nil {
 			return nil, err
 		}
-		if h == rep.Run.TreeHash {
+		if rep.FreshFor(h) {
 			return nil, nil
 		}
-		out, err := exec.Command("git", "-C", r.Root, "diff-tree", "-r", "--name-only", rep.Run.TreeHash, h).Output()
+		// Back on the tree the report started on: what changed while it ran.
+		to := h
+		if h == rep.Run.TreeHash {
+			to = rep.Run.TreeHashEnd
+		}
+		out, err := exec.Command("git", "-C", r.Root, "diff-tree", "-r", "--name-only", rep.Run.TreeHash, to).Output()
 		if err == nil {
 			paths = strings.Fields(string(out))
 		} else {

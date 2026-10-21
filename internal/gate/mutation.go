@@ -47,7 +47,7 @@ func Mutation(root string, p *profile.Profile, tier string) ([]MutationLine, err
 		ids = rep.Run.Only
 	}
 	var out []MutationLine
-	if tree != rep.Run.TreeHash {
+	if !rep.FreshFor(tree) {
 		out = append(out, MutationLine{Text: fmt.Sprintf("the %s report is stale: it ran on tree %s and the tree is now %s; re-run reliab verify --tier %s", tier, rep.Run.TreeHash, tree, tier), Fail: true})
 	}
 	for _, id := range ids {

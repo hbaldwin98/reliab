@@ -124,7 +124,7 @@ func proposeBaseline(opt baselineOptions) (string, *profile.Profile, *mutscore.B
 	if err != nil {
 		return "", nil, nil, nil, withCode(ExitConfig, err)
 	}
-	if tree != rep.Run.TreeHash {
+	if !rep.FreshFor(tree) {
 		return "", nil, nil, nil, withCode(ExitConfig, fmt.Errorf("the %s report is stale (tree %s, now %s); re-run it first", opt.tier, rep.Run.TreeHash, tree))
 	}
 	next, changes, err := mutscore.Propose(cur, rep, opt.command, opt.scopes, time.Now())
