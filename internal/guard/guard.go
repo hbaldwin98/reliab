@@ -300,7 +300,7 @@ func (r *Repo) PreBash(in hookio.Input) hookio.Decision {
 	if in.ToolName == "Bash" {
 		code = codeText(cmd)
 	}
-	// The regexes catch reliab's words inside quoted code (bash -c "...");
+	// The regexes catch reliab's plain words anywhere in the line;
 	// personOnly reads the words past quoting, escapes, global flags, and a
 	// variable naming the binary (personcmd.go).
 	person := personOnly(code, in.ToolName == "PowerShell")

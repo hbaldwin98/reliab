@@ -25,16 +25,23 @@ generated:
      ([protected-path-approval](/decisions/protected-path-approval.md)); deny
      `reliab report verdict` unless the caller's `agent_type` is
      `reliab:reviewer` ([reviewer-verdict](/decisions/reviewer-verdict.md)).
-     They match however the line spells the command: each simple
-     command's words are read past quotes and escapes (a PowerShell
-     backtick too), any word whose base name is `reliab` (with `.exe`,
-     `.cmd`, `.bat`, or `.ps1`, in any case) or a variable that may hold
-     it starts a command, and its command path is found as cobra finds
-     it, past global flags and the word after a flag with no `=`. Until
+     They match the common respellings of the command: line continuations
+     are joined; each simple command's words are read past quotes,
+     escapes, and PowerShell backticks and curly quotes; a word whose base
+     name is `reliab` (with `.exe`, `.cmd`, `.bat`, `.ps1`, `@version`, or
+     go run's `main.go`, in any case, also inside `(`, `$(…)`, or
+     `(Get-Command …)`), or a variable where a command goes (first, or
+     after `&`, `env`, `sudo`, `xargs`, and similar), starts a command;
+     its command path is found as cobra finds it, past flags, redirects,
+     and the word after a flag with no `=`, with a variable standing for
+     any word, a PowerShell splat for any words, and a comma list or a
+     quoted argument read word by word; and a word holding spaces (`bash
+     -c '…'`, `iex "…"`) is read as a command line of its own. Until
      2026-10-20 they matched the words as typed, so `reliab "findings"
      ack`, `reli\ab findings ack`, `reliab --repo . findings ack`, and
-     `$r findings ack` passed; an alias or function wrapping `reliab` still
-     does. These match only text Bash may run. A Bash line whose every simple
+     `$r findings ack` passed. A function or alias wrapping `reliab`, a
+     script, another language's process call, or a separator inside
+     quotes still gets past them. These match only text Bash may run. A Bash line whose every simple
      command is `echo`, `cat`, `grep`, or `git add|commit|tag|notes|status|log|show|diff`
      has its arguments and heredoc bodies blanked first, unless any command
      on it holds, outside quotes, a comment, `$'`, parentheses, braces, a
