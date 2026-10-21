@@ -157,7 +157,7 @@ func joined(s string, sh Shell) string {
 // anywhere.
 func unfollowed(l *line, session string, pwsh bool) {
 	may := []string{session}
-	moves := cdWord.MatchString(l.text) || l.any(func(c *simple) bool {
+	moves := mayHoldCd(l.text) && cdWord.MatchString(l.text) || l.any(func(c *simple) bool {
 		ws := c.texts()
 		v := verb(ws)
 		return v >= 0 && (untracked[strings.ToLower(ws[v])] || pwsh && isScript(ws[v]) || strings.HasPrefix(ws[v], "$"))
@@ -168,6 +168,19 @@ func unfollowed(l *line, session string, pwsh bool) {
 	for _, c := range l.cmds {
 		c.may = may
 	}
+}
+
+// mayHoldCd reports whether s holds text cdWord could match, which is
+// cheaper to ask first: every name it matches holds cd, pushd, popd, sl,
+// or location.
+func mayHoldCd(s string) bool {
+	low := strings.ToLower(s)
+	for _, w := range []string{"cd", "pushd", "popd", "sl", "location"} {
+		if strings.Contains(low, w) {
+			return true
+		}
+	}
+	return false
 }
 
 // made records, on each command of an && chain, the directories a mkdir

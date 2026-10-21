@@ -320,6 +320,10 @@ func (r *Repo) PreBash(in hookio.Input) hookio.Decision {
 	}
 	e := effects.Read(cmd, shell(in.ToolName), cwd)
 	code := e.Code
+	if !strings.Contains(strings.ToLower(code), "reliab") {
+		// The regexes below need reliab's name; most lines lack it.
+		code = ""
+	}
 	if ackCmd.MatchString(code) || e.Invokes("findings", "ack") {
 		return hookio.Decision{Deny: "reliab: findings ack records a human decision; only a person runs it. Ask the user."}
 	}
