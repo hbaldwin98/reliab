@@ -104,6 +104,10 @@ format, never by tool (paper P7), and a one-tool format breaks that.
     per file, from the one base resolution above. The gremlins adapter calls
     it instead of parsing `git diff` itself.
   - `pkg/findings`: writing the findings format, mutant keys, and counts.
+  - `pkg/testresults` (added 2026-10-20): the JUnit and TRX failure readers
+    the core uses, for an adapter that joins a tool's test report to its
+    own output. The insta and Verify adapters had imported them from
+    `internal/adapters`, which an adapter outside the module cannot.
   - `RELIAB_COMMAND_START`, set for each command, so an adapter can ignore
     files an earlier run left in the tree.
   - `reliab findings check <file>` (added 2026-10-19): reads a findings file

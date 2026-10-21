@@ -37,9 +37,9 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/hbaldwin98/reliab/internal/adapters"
 	"github.com/hbaldwin98/reliab/pkg/findings"
 	"github.com/hbaldwin98/reliab/pkg/snapdiff"
+	"github.com/hbaldwin98/reliab/pkg/testresults"
 )
 
 func main() {
@@ -91,9 +91,9 @@ func run(exit int, trx, junit, root string, after time.Time, out string) error {
 // matches that was written at or after after: a runner that names its
 // reports by time leaves earlier runs' reports beside this one's.
 func testFailures(trx, junit string, after time.Time) ([]findings.Finding, error) {
-	pattern, parse := trx, adapters.ParseTRX
+	pattern, parse := trx, testresults.ParseTRX
 	if junit != "" {
-		pattern, parse = junit, adapters.ParseJUnit
+		pattern, parse = junit, testresults.ParseJUnit
 	}
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
