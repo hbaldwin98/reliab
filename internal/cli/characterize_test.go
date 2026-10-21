@@ -80,3 +80,26 @@ func TestCharacterizeCycle(t *testing.T) {
 		t.Errorf("git status = %q", st)
 	}
 }
+
+// knowledge/decisions/named-tests.md: a command whose profile needs tests,
+// run without them, is skipped with reason needs-input and the run is
+// incomplete for that reason, not the budget. compare says which, as
+// verify does.
+func TestCharacterizeCompareNamesWhyItIsIncomplete(t *testing.T) {
+	const transcribe = `for p in $RELIAB_SCOPE; do find "$p" -type f | while read -r f; do mkdir -p "{capture}/$(dirname "$f")"; cp "$f" "{capture}/$f"; done; done`
+	root := testrepo.New(t, "commands:\n  characterize: '"+transcribe+"'\n")
+	t.Chdir(root)
+	if code, out, errOut := run("characterize", "capture", "--scope", "src/a"); code != ExitOK {
+		t.Fatalf("capture: exit %d, stdout %q, stderr %q", code, out, errOut)
+	}
+	prof, err := os.ReadFile(filepath.Join(root, "reliability-profile.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	testrepo.Write(t, root, "reliability-profile.yaml", strings.Replace(string(prof), "  characterize: '", "  characterize:\n    needs: [tests]\n    run: '", 1))
+	testrepo.Write(t, root, "src/a/new.txt", "a change")
+	code, out, errOut := run("characterize", "compare")
+	if code != ExitIncomplete || !strings.Contains(errOut, "characterize: no tests named") || strings.Contains(errOut, "budget") {
+		t.Errorf("compare waiting for tests: exit %d, stdout %q, stderr %q", code, out, errOut)
+	}
+}
