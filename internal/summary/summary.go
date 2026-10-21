@@ -173,16 +173,17 @@ func (s *Summary) MarshalJSON() ([]byte, error) {
 	return json.Marshal(out)
 }
 
-// asks is what a person decides for each kind that stops for one: the
-// triage table's STOP rows (internal/triage).
-var asks = map[string]string{
-	report.KindLegacyDefectOrQuirk:  "keep this pre-existing behavior or have it fixed",
-	report.KindCharacterizationDiff: "approve the changed output or revert the change",
-	report.KindEquivalentMutant:     "confirm that no test can kill this mutant",
-	report.KindRequirementSilent:    "say whether this behavior is intended",
-	report.KindEnvironment:          "fix the machine, then re-run",
-	report.KindBelowThreshold:       "accept this mutation score for the change, or say what should be tested",
-}
+// asks is what a person decides for each kind that stops for one, from
+// report.Kinds.
+var asks = func() map[string]string {
+	m := map[string]string{}
+	for _, p := range report.Kinds {
+		if p.Human {
+			m[p.Kind] = p.Ask
+		}
+	}
+	return m
+}()
 
 // Options select the report and the branch's base.
 type Options struct {
@@ -231,7 +232,7 @@ func Build(opt Options) (*Summary, error) {
 	}
 	for _, c := range r.Run.Commands {
 		s.Ran = append(s.Ran, Ran{ID: c.ID, ExitCode: c.ExitCode, ElapsedSec: c.ElapsedSec, Findings: count[c.ID], Mutants: c.Mutants, Coverage: c.Coverage, Relevance: c.Relevance})
-		if isMutation(c.ID) {
+		if profile.IsMutation(c.ID) {
 			m := Mutation{Command: c.ID, Mutants: c.Mutants, Score: c.Score, Survivors: []Item{}}
 			for _, f := range r.Findings {
 				if f.Command == c.ID && f.Kind != report.KindBelowThreshold {
@@ -295,8 +296,6 @@ func item(f report.Finding) Item {
 	}
 	return it
 }
-
-func isMutation(id string) bool { return strings.HasPrefix(id, "mutation_") }
 
 // notInTier lists the profile's commands that the report's tier does not
 // run. An on-demand report ran what it was asked to, so it has none.

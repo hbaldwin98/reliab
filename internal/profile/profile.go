@@ -206,7 +206,7 @@ func Parse(raw []byte) (*Profile, error) {
 				return nil, fmt.Errorf("commands.%s.relevant_when: %q is not a valid glob", id, g)
 			}
 		}
-		if c.Threshold != nil && !strings.HasPrefix(id, "mutation_") {
+		if c.Threshold != nil && !IsMutation(id) {
 			return nil, fmt.Errorf("commands.%s.threshold: only a mutation command has a score", id)
 		}
 	}
@@ -318,6 +318,11 @@ func toJSONValue(n *yaml.Node) (any, error) {
 	}
 	return nil, fmt.Errorf("line %d: unsupported YAML node", n.Line)
 }
+
+// IsMutation reports whether command id names a mutation command: by the
+// profile's naming convention, its id starts with mutation_
+// (schemas/profile.schema.json, knowledge/decisions/schema-v0-shape.md).
+func IsMutation(id string) bool { return strings.HasPrefix(id, "mutation_") }
 
 // Protects reports whether path matches one of p's protected_paths.
 func Protects(p *Profile, path string) bool { return matchAny(p.ProtectedPaths, path) }

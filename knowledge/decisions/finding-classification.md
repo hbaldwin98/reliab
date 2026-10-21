@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: "Adapters emit unclassified findings; the agent classifies"
-description: "Every adapter finding starts unclassified; reliab findings classify records the kind; hooks block on unclassified."
+description: "Every adapter finding starts unclassified; reliab findings classify records the kind; hooks block on unclassified. Per-kind policy is one table, report.Kinds."
 status: stable
 tags: [report, hooks, departure]
 generated:
@@ -106,6 +106,25 @@ findings bookkeeping that would hold the classification is deferred from v0.
   its survivors while they need it, then stops for a person, who
   acknowledges it or says what to test
   ([mutation-threshold](/decisions/mutation-threshold.md)).
+- **Per-kind policy lives in one table** (added 2026-10-20):
+  `report.Kinds` in `internal/report`. Each row says who resolves the kind
+  (agent or person), whether the agent may assign it with `classify`, the
+  question a person is asked in the PR summary, and its one-line
+  description (the SARIF rule text). `AgentKinds`, `HumanKinds`,
+  `NeedsAgent`, `NeedsHuman`, `classify`'s accepted kinds, the summary's
+  questions, and the SARIF rules derive from it. Before, five maps kept in
+  step by comments had drifted: `below-threshold`'s SARIF rule shipped with
+  no description, and `requirement-silent`'s still named only surviving
+  mutants. Route advice stays in `internal/triage`, since choosing it reads
+  the whole report (the survivors a shortfall still owes, the command a
+  finding came from), and so do the sets of property, fuzz, and fault
+  commands. Tests check that every kind has every answer and route advice,
+  and `internal/repocheck` checks that the docs listing the kinds (the
+  [finding-kind](/concepts/finding-kind.md) table, the report schema's
+  enum, the evidence-stack and verify skills, AGENTS.md and its template,
+  and this record for each kind reliab added) name every kind in the
+  table. A mutation command is one whose id starts with `mutation_`; that
+  convention is `profile.IsMutation`.
 - **A mutant-killing test cites its intent (R3 applies).** Its comment names
   where the mutated behavior is stated: a doc, a ticket, a rule, or a caller
   that depends on it. The implementation is never the source.

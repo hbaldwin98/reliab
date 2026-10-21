@@ -24,9 +24,6 @@ import (
 	"github.com/hbaldwin98/reliab/internal/report"
 )
 
-// IsMutation reports whether a command id is a mutation command.
-func IsMutation(id string) bool { return strings.HasPrefix(id, "mutation_") }
-
 // Compute scores one mutation command from its counts and the report's
 // findings. It returns nil when the command reported no counts.
 func Compute(c report.CommandResult, findings []report.Finding, p *profile.Profile, b *Baseline) *report.Score {
@@ -136,7 +133,7 @@ func Apply(rep *report.Report, p *profile.Profile, b *Baseline) {
 	var short []report.Finding
 	for i := range rep.Run.Commands {
 		c := &rep.Run.Commands[i]
-		if !IsMutation(c.ID) {
+		if !profile.IsMutation(c.ID) {
 			continue
 		}
 		c.Score = Compute(*c, kept, p, b)

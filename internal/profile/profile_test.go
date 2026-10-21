@@ -159,3 +159,17 @@ func TestRoleMissingShape(t *testing.T) {
 		}
 	}
 }
+
+// A mutation command is named by its mutation_ prefix: the profile schema
+// gives threshold to "mutation_* commands only", and the command ids
+// mutation_changed and mutation_full (knowledge/decisions/schema-v0-shape.md).
+func TestIsMutation(t *testing.T) {
+	for id, want := range map[string]bool{
+		"mutation_changed": true, "mutation_full": true,
+		"mutation": false, "unit": false, "my_mutation_x": false,
+	} {
+		if got := IsMutation(id); got != want {
+			t.Errorf("IsMutation(%q) = %v, want %v", id, got, want)
+		}
+	}
+}
