@@ -180,7 +180,7 @@ func skipped(r *report.Report) []string {
 
 // fresh checks that the tree at root still hashes to the report's tree.
 func fresh(root string, r *report.Report) error {
-	p, err := profile.Load(filepath.Join(root, profile.DefaultPath))
+	p, err := profile.Load(r.ProfileFile(root, profile.DefaultPath))
 	if err != nil {
 		return err
 	}

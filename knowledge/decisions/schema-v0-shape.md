@@ -97,6 +97,8 @@ format and strictness. Writing the schemas forced field-level choices.
   Report 0.11.0 adds `run.tests`, `run.mutationTests`, and the skip reason
   `needs-input`; the profile adds a command's `needs`
   ([named-tests](/decisions/named-tests.md)).
+  Report 0.12.0 adds `run.profilePath`, the profile file verify loaded
+  ([report-profile-path](/decisions/report-profile-path.md)).
   An optional `diff` (`additive-only` or `values-changed`) labels a snapshot or capture
   that no longer matches, in the report (0.3.0) and the findings format
   (0.2.0) alike ([snapshot-diff-labels](/decisions/snapshot-diff-labels.md)).

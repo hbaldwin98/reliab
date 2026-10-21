@@ -212,8 +212,15 @@ func Build(opt Options) (*Summary, error) {
 	}
 	s.VerdictCurrent = r.VerdictCurrent()
 
+	// The report is judged by the profile it ran with; protected paths always
+	// come from the default profile (protected-path-approval.md).
 	profileBase := ""
-	prof, err := profile.Load(filepath.Join(opt.Root, profile.DefaultPath))
+	judgeWith, def := r.ProfileFile(opt.Root, profile.DefaultPath), filepath.Join(opt.Root, profile.DefaultPath)
+	prof, err := profile.Load(judgeWith)
+	protProf := prof
+	if judgeWith != def {
+		protProf, _ = profile.Load(def)
+	}
 	if err != nil {
 		s.FreshError = err.Error()
 	} else {
@@ -255,7 +262,7 @@ func Build(opt Options) (*Summary, error) {
 		}
 	}
 	earlier(opt, profileBase, r, s)
-	protectedChanges(opt.Root, prof, s)
+	protectedChanges(opt.Root, protProf, s)
 	return s, nil
 }
 

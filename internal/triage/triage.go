@@ -129,10 +129,15 @@ func classifyFixed(root, id string, change func(*report.Finding) error, notFound
 	return []string{fmt.Sprintf("history %s %s", r.Run.Tier, r.Run.StartedAt)}, stale
 }
 
-// profileBase is the profile's base ref, or "" when it names none or
-// cannot be read.
+// profileBase is the base ref of the profile the latest pre-PR report ran
+// with, as the summary of it reads it, or "" when it names none or cannot
+// be read.
 func profileBase(root string) string {
-	p, err := profile.Load(filepath.Join(root, profile.DefaultPath))
+	path := filepath.Join(root, profile.DefaultPath)
+	if r, err := report.Read(report.LatestPath(root, "prepr")); err == nil {
+		path = r.ProfileFile(root, profile.DefaultPath)
+	}
+	p, err := profile.Load(path)
 	if err != nil {
 		return ""
 	}
@@ -220,7 +225,7 @@ func rescore(root string, r *report.Report) error {
 	if !scored {
 		return nil
 	}
-	p, err := profile.Load(filepath.Join(root, profile.DefaultPath))
+	p, err := profile.Load(r.ProfileFile(root, profile.DefaultPath))
 	if err != nil {
 		return err
 	}
