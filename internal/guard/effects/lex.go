@@ -59,9 +59,13 @@ type simple struct {
 // line is a lexed command line.
 type line struct {
 	text     string
+	start    int // where text starts in the string it was read from
 	sh       Shell
 	cmds     []*simple
 	comments []string
+	// unread says a << was not read as a heredoc: its delimiter was
+	// missing or unbalanced.
+	unread bool
 }
 
 type heredoc struct {
@@ -150,7 +154,7 @@ func matchClose(s string, i int, close byte) int {
 }
 
 func (l *lexer) run() {
-	l.ln = &line{sh: l.sh}
+	l.ln = &line{sh: l.sh, start: l.i}
 	start := l.i
 	l.cur = &simple{start: l.i}
 	for l.i < len(l.s) {
@@ -465,6 +469,8 @@ func (l *lexer) lessThan() {
 		if h.delim != "" {
 			h.cmd = l.cur
 			l.pending = append(l.pending, h)
+		} else {
+			l.ln.unread = true
 		}
 		l.i = next
 	} else if strings.HasPrefix(s[l.i:], "<(") {

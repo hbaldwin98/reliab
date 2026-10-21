@@ -83,7 +83,7 @@ func (r *reader) placeFrom(l *line, session string) {
 	for _, c := range cmds {
 		c.cwds, c.may = []string{session}, []string{session}
 	}
-	if !trackable(joined(l.text, l.sh)) {
+	if !trackable(trackText(l), l.sh == Bash && heredocsEnd(l)) {
 		unfollowed(l, session, pwsh)
 		withDirFlags(cmds, session, pwsh)
 		return
@@ -150,6 +150,50 @@ func joined(s string, sh Shell) string {
 		return s
 	}
 	return strings.NewReplacer(esc+"\r\n", "   ", esc+"\n", "  ").Replace(s)
+}
+
+// trackText is the text trackable judges: the line with its continuations
+// joined and, in Bash, its heredoc bodies and here-strings blanked, each
+// byte in place. The reader reads a body as Bash does (GNU Bash manual
+// §3.6.6), and a body is no command that could move the line.
+func trackText(l *line) string {
+	s := joined(l.text, l.sh)
+	if l.sh != Bash {
+		return s
+	}
+	var b []byte
+	for _, c := range l.cmds {
+		for _, bd := range c.bodies {
+			if b == nil {
+				b = []byte(s)
+			}
+			for i := max(bd.start-l.start, 0); i < min(bd.end-l.start, len(b)); i++ {
+				if b[i] != '\n' {
+					b[i] = ' '
+				}
+			}
+		}
+	}
+	if b == nil {
+		return s
+	}
+	return string(b)
+}
+
+// heredocsEnd reports whether every << on a Bash line is a heredoc the
+// reader read whose command ends its line, so nothing but the body follows
+// the delimiter: the one shape trackable lets through. A command after
+// the delimiter on the same line (cat <<EOF && rm x) stays doubtful.
+func heredocsEnd(l *line) bool {
+	if l.unread {
+		return false
+	}
+	for _, c := range l.cmds {
+		if len(c.bodies) > 0 && c.sep != "\n" && c.sep != "" {
+			return false
+		}
+	}
+	return true
 }
 
 // unfollowed gives the commands of a line the hook cannot track the
@@ -321,18 +365,21 @@ func sepKind(sep string) string {
 // commands run doubtful: no lineDoubt text, no comment, no separator inside
 // quotes or after a backslash, no control or non-ASCII character (PowerShell
 // reads curly quotes and some line breaks Bash does not), and balanced
-// quotes. Then Bash and PowerShell split it where the reader does.
-func trackable(cmd string) bool {
+// quotes. Then Bash and PowerShell split it where the reader does. A line
+// only Bash runs (bash) may hold non-ASCII text, which Bash reads as part
+// of a word, and heredocs the reader read, their bodies blanked
+// (trackText).
+func trackable(cmd string, bash bool) bool {
 	low := strings.ToLower(cmd)
 	for _, s := range lineDoubt {
-		if strings.Contains(low, s) {
+		if strings.Contains(low, s) && !(bash && s == "<<") {
 			return false
 		}
 	}
 	var q byte
 	for i := 0; i < len(cmd); i++ {
 		c := cmd[i]
-		if c >= 0x7f || c < 0x20 && c != '\n' && c != '\t' {
+		if c > 0x7f && !bash || c == 0x7f || c < 0x20 && c != '\n' && c != '\t' {
 			return false
 		}
 		if q != 0 {
