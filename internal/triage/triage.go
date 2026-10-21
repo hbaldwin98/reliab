@@ -19,13 +19,9 @@ import (
 // through the deferred findings queue.
 var Tiers = []string{"inner", "prepr", report.OnDemand}
 
-// ClassifiableKinds are the kinds an agent may assign. It may route a
-// finding to a human kind; it may not acknowledge it.
-var ClassifiableKinds = []string{
-	report.KindNewCodeDefect, report.KindHarnessDefect, report.KindWrongProperty,
-	report.KindLegacyDefectOrQuirk, report.KindCharacterizationDiff, report.KindEquivalentMutant,
-	report.KindRequirementSilent, report.KindEnvironment,
-}
+// ClassifiableKinds are the kinds an agent may assign: report.Kinds' rows
+// marked Assignable.
+var ClassifiableKinds = report.AssignableKinds
 
 // Classify sets the kind of finding id in every latest report that holds
 // it, and returns the tiers it updated; a *NotRescored error comes with
@@ -199,7 +195,8 @@ func rescore(root string, r *report.Report) error {
 	return nil
 }
 
-// actions is the triage table (paper Figure 11, AGENTS.md template).
+// actions is the triage table (paper Figure 11, AGENTS.md template): route
+// advice for each of report.Kinds. A human kind's row starts with STOP.
 var actions = map[string]string{
 	report.KindUnclassified:         "reproduce from its seed or input, shrink it, then: reliab findings classify %s --kind <kind> --reason \"...\"",
 	report.KindNewCodeDefect:        "fix product code, never the test (R1); re-run reliab verify",

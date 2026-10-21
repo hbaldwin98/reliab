@@ -173,16 +173,17 @@ func (s *Summary) MarshalJSON() ([]byte, error) {
 	return json.Marshal(out)
 }
 
-// asks is what a person decides for each kind that stops for one: the
-// triage table's STOP rows (internal/triage).
-var asks = map[string]string{
-	report.KindLegacyDefectOrQuirk:  "keep this pre-existing behavior or have it fixed",
-	report.KindCharacterizationDiff: "approve the changed output or revert the change",
-	report.KindEquivalentMutant:     "confirm that no test can kill this mutant",
-	report.KindRequirementSilent:    "say whether this behavior is intended",
-	report.KindEnvironment:          "fix the machine, then re-run",
-	report.KindBelowThreshold:       "accept this mutation score for the change, or say what should be tested",
-}
+// asks is what a person decides for each kind that stops for one, from
+// report.Kinds.
+var asks = func() map[string]string {
+	m := map[string]string{}
+	for _, p := range report.Kinds {
+		if p.Human {
+			m[p.Kind] = p.Ask
+		}
+	}
+	return m
+}()
 
 // Options select the report and the branch's base.
 type Options struct {

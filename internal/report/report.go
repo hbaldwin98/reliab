@@ -369,26 +369,92 @@ func Read(path string) (*Report, error) {
 // Now formats t the way reports record timestamps.
 func Now(t time.Time) string { return t.Format(time.RFC3339) }
 
-// AgentKinds are the kinds the agent resolves itself; HumanKinds stop for a
-// person. See knowledge/concepts/finding-kind.md.
-var (
-	AgentKinds = []string{KindUnclassified, KindNewCodeDefect, KindHarnessDefect, KindWrongProperty}
-	HumanKinds = []string{KindLegacyDefectOrQuirk, KindCharacterizationDiff, KindEquivalentMutant, KindRequirementSilent, KindEnvironment, KindBelowThreshold}
-)
+// KindPolicy is what reliab knows about one finding kind. Kinds is the one
+// table of it: triage, summary, and export read it rather than keep maps of
+// their own (knowledge/decisions/finding-classification.md). Route advice
+// stays in triage, which reads the whole report to choose it.
+type KindPolicy struct {
+	Kind string
+	// Human is true when the kind stops for a person; otherwise the agent
+	// resolves it.
+	Human bool
+	// Assignable is true when the agent may assign the kind with reliab
+	// findings classify. It may route a finding to a human kind; it may not
+	// acknowledge it.
+	Assignable bool
+	// Ask is what a person decides, for a human kind; empty for an agent
+	// kind.
+	Ask string
+	// Rule is the kind in one line: the SARIF rule's description.
+	Rule string
+}
 
-// NeedsAgent reports whether f is open and the agent must act on it.
-func NeedsAgent(f Finding) bool { return f.Status == StatusOpen && contains(AgentKinds, f.Kind) }
+// Kinds holds every finding kind, agent kinds first. See
+// knowledge/concepts/finding-kind.md.
+var Kinds = []KindPolicy{
+	{Kind: KindUnclassified, Rule: "Failure not yet classified"},
+	{Kind: KindNewCodeDefect, Assignable: true, Rule: "Defect in new code"},
+	{Kind: KindHarnessDefect, Assignable: true, Rule: "Defect in the test harness"},
+	{Kind: KindWrongProperty, Assignable: true, Rule: "Property does not hold as written"},
+	{Kind: KindLegacyDefectOrQuirk, Human: true, Assignable: true,
+		Ask:  "keep this pre-existing behavior or have it fixed",
+		Rule: "Legacy defect or quirk awaiting a human decision"},
+	{Kind: KindCharacterizationDiff, Human: true, Assignable: true,
+		Ask:  "approve the changed output or revert the change",
+		Rule: "Characterization snapshot changed"},
+	{Kind: KindEquivalentMutant, Human: true, Assignable: true,
+		Ask:  "confirm that no test can kill this mutant",
+		Rule: "Surviving mutant judged equivalent, awaiting a human"},
+	{Kind: KindRequirementSilent, Human: true, Assignable: true,
+		Ask:  "say whether this behavior is intended",
+		Rule: "Behavior no requirement states (a surviving mutant, or a property, fuzz, or fault failure), awaiting a human"},
+	{Kind: KindEnvironment, Human: true, Assignable: true,
+		Ask:  "fix the machine, then re-run",
+		Rule: "Failure caused by the machine, not the code, awaiting a human"},
+	{Kind: KindBelowThreshold, Human: true,
+		Ask:  "accept this mutation score for the change, or say what should be tested",
+		Rule: "Mutation score below its threshold or baseline, awaiting a human once its survivors are handled"},
+}
 
-// NeedsHuman reports whether f is open and waits for a person.
-func NeedsHuman(f Finding) bool { return f.Status == StatusOpen && contains(HumanKinds, f.Kind) }
-
-func contains(ss []string, s string) bool {
-	for _, x := range ss {
-		if x == s {
-			return true
+// Policy returns kind's row of Kinds; ok is false for an unknown kind.
+func Policy(kind string) (p KindPolicy, ok bool) {
+	for _, p := range Kinds {
+		if p.Kind == kind {
+			return p, true
 		}
 	}
-	return false
+	return KindPolicy{}, false
+}
+
+// AgentKinds are the kinds the agent resolves itself; HumanKinds stop for a
+// person; AssignableKinds are the kinds an agent may assign. All three
+// follow Kinds.
+var (
+	AgentKinds      = kindsWhere(func(p KindPolicy) bool { return !p.Human })
+	HumanKinds      = kindsWhere(func(p KindPolicy) bool { return p.Human })
+	AssignableKinds = kindsWhere(func(p KindPolicy) bool { return p.Assignable })
+)
+
+func kindsWhere(keep func(KindPolicy) bool) []string {
+	var out []string
+	for _, p := range Kinds {
+		if keep(p) {
+			out = append(out, p.Kind)
+		}
+	}
+	return out
+}
+
+// NeedsAgent reports whether f is open and the agent must act on it.
+func NeedsAgent(f Finding) bool {
+	p, ok := Policy(f.Kind)
+	return f.Status == StatusOpen && ok && !p.Human
+}
+
+// NeedsHuman reports whether f is open and waits for a person.
+func NeedsHuman(f Finding) bool {
+	p, ok := Policy(f.Kind)
+	return f.Status == StatusOpen && ok && p.Human
 }
 
 // Latest returns the most recently started latest report among tiers, or

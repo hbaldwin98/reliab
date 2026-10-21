@@ -86,23 +86,10 @@ type sarifRegion struct {
 	StartLine int `json:"startLine"`
 }
 
-var ruleText = map[string]string{
-	report.KindUnclassified:         "Failure not yet classified",
-	report.KindNewCodeDefect:        "Defect in new code",
-	report.KindHarnessDefect:        "Defect in the test harness",
-	report.KindWrongProperty:        "Property does not hold as written",
-	report.KindLegacyDefectOrQuirk:  "Legacy defect or quirk awaiting a human decision",
-	report.KindCharacterizationDiff: "Characterization snapshot changed",
-	report.KindEquivalentMutant:     "Surviving mutant judged equivalent, awaiting a human",
-	report.KindRequirementSilent:    "Surviving mutant on behavior no requirement states, awaiting a human",
-	report.KindEnvironment:          "Failure caused by the machine, not the code, awaiting a human",
-}
-
 func sarif(w io.Writer, r *report.Report) error {
-	kinds := append(append([]string{}, report.AgentKinds...), report.HumanKinds...)
-	rules := make([]sarifRule, 0, len(kinds))
-	for _, k := range kinds {
-		rules = append(rules, sarifRule{ID: k, ShortDescription: sarifMessage{ruleText[k]}})
+	rules := make([]sarifRule, 0, len(report.Kinds))
+	for _, p := range report.Kinds {
+		rules = append(rules, sarifRule{ID: p.Kind, ShortDescription: sarifMessage{p.Rule}})
 	}
 	results := make([]sarifResult, 0, len(r.Findings))
 	for _, f := range r.Findings {
@@ -166,7 +153,8 @@ func findingText(f report.Finding) string {
 	case f.Message != "":
 		b.WriteString(f.Message)
 	default:
-		b.WriteString(ruleText[f.Kind])
+		p, _ := report.Policy(f.Kind)
+		b.WriteString(p.Rule)
 	}
 	return b.String()
 }

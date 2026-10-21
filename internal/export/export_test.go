@@ -93,3 +93,42 @@ func TestUnknownFormat(t *testing.T) {
 		t.Fatal("unknown format accepted")
 	}
 }
+
+// Every kind is a SARIF rule with a description: code hosts show
+// a rule's shortDescription (SARIF 2.1.0 reportingDescriptor) as its name.
+// below-threshold shipped without one.
+func TestSARIFRulesDescribeEveryKind(t *testing.T) {
+	var buf bytes.Buffer
+	if err := Write(&buf, sample(), "sarif"); err != nil {
+		t.Fatal(err)
+	}
+	var log struct {
+		Runs []struct {
+			Tool struct {
+				Driver struct {
+					Rules []struct {
+						ID               string `json:"id"`
+						ShortDescription struct {
+							Text string `json:"text"`
+						} `json:"shortDescription"`
+					} `json:"rules"`
+				} `json:"driver"`
+			} `json:"tool"`
+		} `json:"runs"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &log); err != nil {
+		t.Fatal(err)
+	}
+	text := map[string]string{}
+	for _, r := range log.Runs[0].Tool.Driver.Rules {
+		text[r.ID] = r.ShortDescription.Text
+	}
+	for _, p := range report.Kinds {
+		if strings.TrimSpace(text[p.Kind]) == "" {
+			t.Errorf("rule %s has no shortDescription.text", p.Kind)
+		}
+	}
+	if text[report.KindBelowThreshold] == "" {
+		t.Error("below-threshold has no shortDescription.text")
+	}
+}

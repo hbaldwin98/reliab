@@ -635,3 +635,21 @@ func TestRouteNamedTestsAndNeedsInput(t *testing.T) {
 		t.Errorf("tests named, mutation tests not:\n%s", buf.String())
 	}
 }
+
+// Route advice covers every kind in report.Kinds, and a kind that stops for
+// a person says STOP (AGENTS.md template, "When a test fails").
+func TestActionsCoverEveryKind(t *testing.T) {
+	for _, p := range report.Kinds {
+		a, ok := actions[p.Kind]
+		if !ok || a == "" {
+			t.Errorf("%s: no route advice", p.Kind)
+			continue
+		}
+		if p.Human != strings.HasPrefix(a, "STOP") {
+			t.Errorf("%s: human %v, advice %q", p.Kind, p.Human, a)
+		}
+	}
+	if len(actions) != len(report.Kinds) {
+		t.Errorf("actions has %d rows, report.Kinds %d", len(actions), len(report.Kinds))
+	}
+}
