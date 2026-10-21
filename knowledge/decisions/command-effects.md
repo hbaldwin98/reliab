@@ -107,7 +107,10 @@ allowed.
    the line is also read with it as a line break for where it may write.
 5. **New writes.** `find` with `-delete`, or `-exec` running a write verb,
    writes and removes whole the paths it starts from; `dd of=`; a
-   PowerShell `-Name:value` parameter of a write verb.
+   PowerShell `-Name:value` parameter of a write verb. Fewer too:
+   `git restore --staged` (without `--worktree`) and a `git reset` without
+   `--hard`, `--merge`, or `--keep` change only the index (git-restore(1),
+   git-reset(1)), so unstaging a protected file is no longer denied.
 6. **One edit-time protected set.** `profile.EditSet` holds reliab's
    outputs (`.reliab/**`) and the profile's protected paths, minus the
    profile while HEAD has no copy of it, and asks git only when the

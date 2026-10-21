@@ -52,6 +52,18 @@ func TestWritesAndWhole(t *testing.T) {
 		{"git -C x checkout -- f", Bash, []string{"--", "f"}, []string{"--", "f"}},
 		{"git mv a b", Bash, []string{"a", "b"}, nil},
 		{"git log -- f", Bash, nil, nil},
+		// git-restore(1): --staged restores only the index unless
+		// --worktree is given too; git-reset(1) touches files only with
+		// --hard, --merge, or --keep.
+		{"git restore --staged f", Bash, nil, nil},
+		{"git restore -S .", Bash, nil, nil},
+		{"git restore --staged --worktree f", Bash, []string{"--staged", "--worktree", "f"}, []string{"--staged", "--worktree", "f"}},
+		{"git restore -SW f", Bash, []string{"-SW", "f"}, []string{"-SW", "f"}},
+		{"git restore f", Bash, []string{"f"}, []string{"f"}},
+		{"git reset HEAD -- f", Bash, nil, nil},
+		{"git reset --soft HEAD~1", Bash, nil, nil},
+		{"git reset --hard HEAD", Bash, []string{"--hard", "HEAD"}, []string{"--hard", "HEAD"}},
+		{"git reset --keep main", Bash, []string{"--keep", "main"}, []string{"--keep", "main"}},
 		{"dd if=a of=b", Bash, []string{"b"}, nil},
 		{"find d -name x -delete", Bash, []string{"d"}, []string{"d"}},
 		{"find d -exec rm {} +", Bash, []string{"d", "{}"}, []string{"d", "{}"}},

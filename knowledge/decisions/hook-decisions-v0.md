@@ -69,7 +69,9 @@ generated:
      (the command line split at `;`, `&`, `|`, and newlines; since
      2026-10-20 the verb must be the command it runs, past wrappers such
      as `sudo`, `env`, or `xargs`, so `grep cp snapshots` writes nothing,
-     and `find -delete`, `find -exec rm`, and `dd of=` count), or an option
+     and `find -delete`, `find -exec rm`, and `dd of=` count, while
+     `git restore --staged` and a `git reset` without `--hard`, `--merge`,
+     or `--keep` change only the index and do not), or an option
      naming one for output (`--output`, `--output-file`,
      `--output-directory`, `-OutFile` or `-OutFile:<path>`, and `-o` for
      `git format-patch`, `curl`, `sort`, and `go`, `-O` for `wget`, the

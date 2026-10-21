@@ -162,7 +162,7 @@ func effectsOf(ws []string, sh Shell) (writes, whole []string, push bool, code [
 			return
 		}
 		sub, rest := strings.ToLower(args[k]), args[k+1:]
-		if gitWrites[sub] {
+		if gitWrites[sub] && !indexOnly(sub, rest) {
 			writes = append(writes, rest...)
 			if gitDirWrites[sub] {
 				whole = append(whole, rest...)
@@ -249,6 +249,31 @@ func effectsOf(ws []string, sh Shell) (writes, whole []string, push bool, code [
 		}
 	}
 	return
+}
+
+// indexOnly reports whether a git restore or reset changes only the index,
+// never a file: git-restore(1) restores only the index with --staged unless
+// --worktree is given too, and git-reset(1) touches the working tree only
+// with --hard, --merge, or --keep.
+func indexOnly(sub string, args []string) bool {
+	has := func(long string, short byte) bool {
+		for _, a := range args {
+			if a == "--" {
+				return false
+			}
+			if a == long || short != 0 && len(a) > 1 && a[0] == '-' && a[1] != '-' && strings.IndexByte(a[1:], short) >= 0 {
+				return true
+			}
+		}
+		return false
+	}
+	if sub == "restore" {
+		return has("--staged", 'S') && !has("--worktree", 'W')
+	}
+	if sub == "reset" {
+		return !has("--hard", 0) && !has("--merge", 0) && !has("--keep", 0)
+	}
+	return false
 }
 
 // inPlace reports whether a cluster of short options holds -i, as sed -i,
