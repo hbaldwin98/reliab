@@ -1,4 +1,4 @@
-package guard
+package effects
 
 import (
 	"os"
@@ -13,36 +13,24 @@ import (
 // so a write in a scratch repository the line cds into is not a write here.
 // For moving a write out, the rule is fail closed: a simple command is
 // judged from the session's directory unless the line surely runs it
-// elsewhere. Surely means a cd the
-// hook can follow (a literal directory that exists and can be entered),
-// joined by && to the commands it moves, in a chain nothing on the line can
-// reorder or redefine. Any doubt (a variable, cd -, popd, ||, a pipe, a
-// loop, a subshell or brace group, a quote hiding a separator, an alias,
-// eval, a script that may change location) leaves the session's directory.
+// elsewhere. Surely means a cd the hook can follow (a literal directory
+// that exists and can be entered, or that a mkdir earlier in the same &&
+// chain makes), joined by && to the commands it moves, in a chain nothing
+// on the line can reorder or redefine. Any doubt (a variable, cd -, popd,
+// ||, a pipe, a loop, a subshell or brace group, a quote hiding a
+// separator, a heredoc, a comment, an alias, eval, a script that may
+// change location) leaves the session's directory.
 //
 // That rule only keeps a write from moving out of the repository. A cd also
 // stays in effect past ;, || and a newline, and one the hook cannot follow
 // may lead anywhere, so cd internal; rm ../x still writes ../x from
-// internal. Each part also carries every directory it may run in, and a
+// internal. Each command also carries every directory it may run in, and a
 // write is judged from those too.
 
-// part is one simple command and the directories it may run in: the
-// session's, or after a cd, the directory as the shell names it and as the
-// kernel resolves it through symlinks. A path is judged against each, since
-// PowerShell resolves .. on the first and every native program on the
-// second.
-type part struct {
-	text string
-	cwds []string
-	// may holds every directory the part may run in, whatever the
-	// separators; anywhere among them means a directory the hook cannot
-	// know.
-	may []string
-}
-
-// anywhere stands, in a part's may, for a directory the hook cannot know: a
-// cd to a variable or one that may fail, popd, a script that may cd.
-const anywhere = "\x00anywhere"
+// Anywhere stands, among a command's directories, for a directory the hook
+// cannot know: a cd to a variable or one that may fail, popd, a script that
+// may cd.
+const Anywhere = "\x00anywhere"
 
 var (
 	// cdVerbs move the commands after them to their one argument.
@@ -76,50 +64,53 @@ var (
 	cdWord = regexp.MustCompile("(?i)(^|[\\s;&|({`=])(cd|chdir|pushd|popd|sl|set-location|push-location|pop-location)($|[\\s;&|)}`.\\\\/'\"])")
 )
 
-// parts splits cmd at ;, &, |, and newlines, as commandSep does, and gives
-// each simple command the directories it may run in, starting from the
-// session's. pwsh says the line is PowerShell, where a backslash separates
-// paths instead of escaping.
-func parts(session, cmd string, pwsh bool) []part {
-	seps := commandSep.FindAllStringIndex(cmd, -1)
-	var out []part
-	start := 0
-	for k := 0; k <= len(seps); k++ {
-		end := len(cmd)
-		if k < len(seps) {
-			end = seps[k][0]
-		}
-		out = append(out, part{text: cmd[start:end], cwds: []string{session}, may: []string{session}})
-		if k < len(seps) {
-			start = seps[k][1]
+// place gives each simple command of l the directories it may run in,
+// starting from dirs[0]; any other start directory is added to each
+// command's, for code nested in a command that may run in several.
+func (r *reader) place(l *line, dirs []string) {
+	session := dirs[0]
+	r.placeFrom(l, session)
+	if len(dirs) > 1 {
+		for _, c := range l.cmds {
+			c.may = union(c.may, dirs)
 		}
 	}
-	if !trackable(cmd) {
-		return withDirFlags(unfollowed(out, session, pwsh), session, pwsh)
+}
+
+func (r *reader) placeFrom(l *line, session string) {
+	pwsh := l.sh == PowerShell
+	cmds := l.cmds
+	for _, c := range cmds {
+		c.cwds, c.may = []string{session}, []string{session}
 	}
-	us := units(cmd, seps)
-	for _, u := range us {
-		ws := words(u.text, pwsh)
+	if !trackable(joined(l.text, l.sh)) {
+		unfollowed(l, session, pwsh)
+		withDirFlags(cmds, session, pwsh)
+		return
+	}
+	for _, c := range cmds {
+		ws := c.texts()
 		if v := verb(ws); v >= 0 && (untracked[strings.ToLower(ws[v])] || pwsh && isScript(ws[v])) {
-			return withDirFlags(unfollowed(out, session, pwsh), session, pwsh)
+			unfollowed(l, session, pwsh)
+			withDirFlags(cmds, session, pwsh)
+			return
 		}
 	}
-	mayRun(out, us, session, pwsh)
+	made(cmds, session, pwsh)
+	r.mayRun(cmds, session, pwsh)
 	session1 := []string{session}
 	logical, cwds := session, session1
 	moved, frozen, prevAnd := false, false, true
 	reset := func() { logical, cwds, moved = session, session1, false }
-	for _, u := range us {
-		for k := u.first; k <= u.last; k++ {
-			out[k].cwds = cwds
-		}
-		kind := sepKind(u.sep)
-		ws := words(u.text, pwsh)
+	for _, c := range cmds {
+		c.cwds = cwds
+		kind := sepKind(c.sep)
+		ws := c.texts()
 		v := verb(ws)
 		if v >= 0 && cdVerbs[strings.ToLower(ws[v])] {
 			l, p, ok := "", "", false
 			if !frozen && prevAnd && kind == "&&" {
-				l, p, ok = cdTarget(logical, ws[v+1:], pwsh)
+				l, p, ok = r.cdTarget(logical, ws[v+1:], pwsh, c)
 			}
 			if ok {
 				logical, cwds, moved = l, uniq(l, p), true
@@ -144,52 +135,126 @@ func parts(session, cmd string, pwsh bool) []part {
 		}
 		prevAnd = kind == "&&"
 	}
-	return withDirFlags(out, session, pwsh)
+	withDirFlags(cmds, session, pwsh)
 }
 
-// unfollowed gives the parts of a line the hook cannot track the session's
-// directory and, when anything on the line may change directory, anywhere.
-func unfollowed(ps []part, session string, pwsh bool) []part {
+// joined is the line with its continuations joined, as the shell joins
+// them (GNU Bash manual §3.1.2.1; a PowerShell backtick before a newline),
+// each byte kept in place.
+func joined(s string, sh Shell) string {
+	esc := `\`
+	if sh == PowerShell {
+		esc = "`"
+	}
+	if !strings.Contains(s, esc+"\n") && !strings.Contains(s, esc+"\r\n") {
+		return s
+	}
+	return strings.NewReplacer(esc+"\r\n", "   ", esc+"\n", "  ").Replace(s)
+}
+
+// unfollowed gives the commands of a line the hook cannot track the
+// session's directory and, when anything on the line may change directory,
+// anywhere.
+func unfollowed(l *line, session string, pwsh bool) {
 	may := []string{session}
-	for _, p := range ps {
-		ws := words(p.text, pwsh)
+	moves := cdWord.MatchString(l.text) || l.any(func(c *simple) bool {
+		ws := c.texts()
 		v := verb(ws)
-		if cdWord.MatchString(p.text) || v >= 0 && (untracked[strings.ToLower(ws[v])] || pwsh && isScript(ws[v]) || strings.HasPrefix(ws[v], "$")) {
-			may = append(may, anywhere)
-			break
-		}
+		return v >= 0 && (untracked[strings.ToLower(ws[v])] || pwsh && isScript(ws[v]) || strings.HasPrefix(ws[v], "$"))
+	})
+	if moves {
+		may = append(may, Anywhere)
 	}
-	for i := range ps {
-		ps[i].may = may
+	for _, c := range l.cmds {
+		c.may = may
 	}
-	return ps
 }
 
-// mayRun sets each part's may. A cd keeps its directory until another cd,
-// so after ; or || a command runs where any command of the chain before it
-// ran. A cd joined by && moves what follows only if nothing before it may
-// have skipped it; otherwise what follows may run on either side of it. A
-// cd the hook cannot follow, or anything else that may move, leads
+// made records, on each command of an && chain, the directories a mkdir
+// earlier in the chain made: a cd there follows, though the directory does
+// not exist when the hook runs. Only absolute paths count, so where the
+// mkdir ran does not matter.
+func made(cmds []*simple, session string, pwsh bool) {
+	var dirs map[string]bool
+	for _, c := range cmds {
+		c.made = dirs
+		kind := sepKind(c.sep)
+		if kind != "&&" {
+			dirs = nil
+			continue
+		}
+		ws := c.texts()
+		v := verb(ws)
+		if v < 0 || !mkdirVerbs[strings.ToLower(ws[v])] {
+			continue
+		}
+		next := map[string]bool{}
+		for d := range dirs {
+			next[d] = true
+		}
+		parents := false
+		for _, a := range ws[v+1:] {
+			if a == "-p" || a == "--parents" || strings.EqualFold(a, "-force") {
+				parents = true
+			}
+		}
+		for _, a := range ws[v+1:] {
+			if strings.HasPrefix(a, "-") {
+				continue
+			}
+			d, ok := resolve(session, a, pwsh)
+			if !ok || !absArg(a, pwsh) {
+				continue
+			}
+			next[d] = true
+			for p := filepath.Dir(d); parents && p != d && p != filepath.Dir(p); p = filepath.Dir(p) {
+				next[p] = true
+				d = p
+			}
+		}
+		dirs = next
+	}
+}
+
+// mkdirVerbs make the directories they name.
+var mkdirVerbs = map[string]bool{"mkdir": true, "md": true}
+
+// absArg reports whether a command's path argument is absolute.
+func absArg(a string, pwsh bool) bool {
+	if pwsh {
+		a = strings.ReplaceAll(a, `\`, "/")
+	}
+	return isDrivePath(a, pwsh) || filepath.IsAbs(filepath.FromSlash(a))
+}
+
+// isDrivePath reports whether a is a Git Bash drive path such as /c/x.
+func isDrivePath(a string, pwsh bool) bool {
+	return !pwsh && runtime.GOOS == "windows" && len(a) >= 2 && a[0] == '/' && isLetter(a[1]) && (len(a) == 2 || a[2] == '/')
+}
+
+// mayRun sets each command's may. A cd keeps its directory until another
+// cd, so after ; or || a command runs where any command of the chain before
+// it ran. A cd joined by && moves what follows only if nothing before it
+// may have skipped it; otherwise what follows may run on either side of
+// it. A cd the hook cannot follow, or anything else that may move, leads
 // anywhere for the rest of the line.
-func mayRun(out []part, us []unit, session string, pwsh bool) {
+func (r *reader) mayRun(cmds []*simple, session string, pwsh bool) {
 	cur, logical := []string{session}, []string{session}
 	chain, chainLogical := cur, logical
 	lost, prevAnd := false, true
-	for _, u := range us {
+	for _, c := range cmds {
 		may := cur
 		if lost {
-			may = union(cur, []string{anywhere})
+			may = union(cur, []string{Anywhere})
 		}
-		for k := u.first; k <= u.last; k++ {
-			out[k].may = may
-		}
-		kind := sepKind(u.sep)
-		ws := words(u.text, pwsh)
+		c.may = may
+		kind := sepKind(c.sep)
+		ws := c.texts()
 		if v := verb(ws); v >= 0 && cdVerbs[strings.ToLower(ws[v])] {
 			var named, dirs []string
 			followed := true
 			for _, l := range logical {
-				n, p, ok := cdTarget(l, ws[v+1:], pwsh)
+				n, p, ok := r.cdTarget(l, ws[v+1:], pwsh, c)
 				if !ok {
 					followed = false
 					break
@@ -227,32 +292,6 @@ func union(a, b []string) []string {
 	return out
 }
 
-// unit is a simple command that commandSep may split at a redirect's &, as
-// in 2>&1, and the separator after it.
-type unit struct {
-	text, sep   string
-	first, last int // the parts it spans
-}
-
-func units(cmd string, seps [][]int) []unit {
-	var us []unit
-	start, first := 0, 0
-	for k := 0; k <= len(seps); k++ {
-		end, sep := len(cmd), ""
-		if k < len(seps) {
-			end, sep = seps[k][0], cmd[seps[k][0]:seps[k][1]]
-			if sep == "&" && (end > 0 && strings.IndexByte("<>", cmd[end-1]) >= 0 || seps[k][1] < len(cmd) && cmd[seps[k][1]] == '>') {
-				continue
-			}
-		}
-		us = append(us, unit{cmd[start:end], sep, first, k})
-		if k < len(seps) {
-			start, first = seps[k][1], k+1
-		}
-	}
-	return us
-}
-
 // sepKind names what a separator does to the command before it: &&, ||,
 // a pipe |, or ends the chain (;, a newline, a background &, anything else).
 func sepKind(sep string) string {
@@ -269,7 +308,7 @@ func sepKind(sep string) string {
 // commands run doubtful: no lineDoubt text, no comment, no separator inside
 // quotes or after a backslash, no control or non-ASCII character (PowerShell
 // reads curly quotes and some line breaks Bash does not), and balanced
-// quotes. Then Bash and PowerShell split it where commandSep does.
+// quotes. Then Bash and PowerShell split it where the reader does.
 func trackable(cmd string) bool {
 	low := strings.ToLower(cmd)
 	for _, s := range lineDoubt {
@@ -298,50 +337,6 @@ func trackable(cmd string) bool {
 		}
 	}
 	return q == 0
-}
-
-// words splits a simple command into words, removing quotes; in Bash an
-// unquoted backslash escapes the next character, in PowerShell it is kept.
-// trackable has ruled out the escapes the two shells read differently.
-func words(s string, pwsh bool) []string {
-	var ws []string
-	var b strings.Builder
-	in := false
-	var q byte
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if q != 0 {
-			if c == q {
-				q = 0
-			} else if c == '\\' && q == '"' && !pwsh && i+1 < len(s) && s[i+1] == '\\' {
-				b.WriteByte('\\')
-				i++
-			} else {
-				b.WriteByte(c)
-			}
-			continue
-		}
-		if c == '\'' || c == '"' {
-			q, in = c, true
-		} else if c == ' ' || c == '\t' || c == '\n' {
-			if in {
-				ws = append(ws, b.String())
-				b.Reset()
-				in = false
-			}
-		} else if c == '\\' && !pwsh && i+1 < len(s) {
-			b.WriteByte(s[i+1])
-			i++
-			in = true
-		} else {
-			b.WriteByte(c)
-			in = true
-		}
-	}
-	if in {
-		ws = append(ws, b.String())
-	}
-	return ws
 }
 
 // verb returns the index of the command's name, past assignments and
@@ -387,10 +382,13 @@ func movesDir(ws []string) bool {
 // cdTarget resolves a cd's arguments from logical, the directory as the
 // shell names it. It returns the new directory as named and as resolved
 // through symlinks, and false when the cd cannot be followed: no single
-// literal argument, an option other than cdFlags, a path the shell would
-// expand or read differently, or a directory that is missing or cannot be
-// entered.
-func cdTarget(logical string, args []string, pwsh bool) (string, string, bool) {
+// literal argument, an option other than cdFlags, a redirection, a path
+// the shell would expand or read differently, or a directory that is
+// missing (and no earlier mkdir made) or cannot be entered.
+func (r *reader) cdTarget(logical string, args []string, pwsh bool, c *simple) (string, string, bool) {
+	if c.redirs > 0 {
+		return "", "", false
+	}
 	var dir string
 	n, opts := 0, true
 	for _, a := range args {
@@ -407,19 +405,36 @@ func cdTarget(logical string, args []string, pwsh bool) (string, string, bool) {
 		dir = a
 		n++
 	}
+	if n != 1 {
+		return "", "", false
+	}
+	dir, ok := resolve(logical, dir, pwsh)
+	if !ok {
+		return "", "", false
+	}
+	real, ok := r.enter(dir)
+	if !ok && c.made[dir] {
+		return dir, existing(dir), true
+	}
+	return dir, real, ok
+}
+
+// resolve turns a cd's literal argument into the directory it names from
+// logical, or false when the shell would expand or read it differently.
+func resolve(logical, dir string, pwsh bool) (string, bool) {
 	// A tilde expands only where it begins a word (GNU Bash manual §3.5.2;
 	// PowerShell's ~ is a path's first character), so a Windows short name
 	// such as RUNNER~1 is literal.
-	if n != 1 || dir == "" || strings.ContainsAny(dir, "$*?[%<>|&;") || strings.HasPrefix(dir, "~") {
-		return "", "", false
+	if dir == "" || strings.ContainsAny(dir, "$*?[%<>|&;") || strings.HasPrefix(dir, "~") {
+		return "", false
 	}
 	if pwsh {
 		dir = strings.ReplaceAll(dir, `\`, "/")
 	} else if strings.Contains(dir, `\`) {
-		return "", "", false
+		return "", false
 	}
 	// Git Bash on Windows names drive C: /c.
-	if !pwsh && runtime.GOOS == "windows" && len(dir) >= 2 && dir[0] == '/' && isLetter(dir[1]) && (len(dir) == 2 || dir[2] == '/') {
+	if isDrivePath(dir, pwsh) {
 		dir = dir[1:2] + ":/" + dir[min(3, len(dir)):]
 	}
 	dir = filepath.FromSlash(dir)
@@ -427,23 +442,52 @@ func cdTarget(logical string, args []string, pwsh bool) (string, string, bool) {
 		// A drive-relative or rooted path (C:x, \x on Windows) depends on
 		// state the hook cannot see, as does CDPATH for a bare name.
 		if filepath.VolumeName(dir) != "" || strings.HasPrefix(dir, string(filepath.Separator)) {
-			return "", "", false
+			return "", false
 		}
 		if os.Getenv("CDPATH") != "" && dir != "." && dir != ".." && !strings.HasPrefix(dir, "."+string(filepath.Separator)) && !strings.HasPrefix(dir, ".."+string(filepath.Separator)) {
-			return "", "", false
+			return "", false
 		}
 		dir = filepath.Join(logical, dir)
 	}
-	dir = filepath.Clean(dir)
-	// Stating dir/. needs search permission on dir, as cd does.
-	if fi, err := os.Stat(strings.TrimSuffix(dir, string(filepath.Separator)) + string(filepath.Separator) + "."); err != nil || !fi.IsDir() {
-		return "", "", false
+	return filepath.Clean(dir), true
+}
+
+type entered struct {
+	real string
+	ok   bool
+}
+
+// enter reports whether a cd can enter dir, and where symlinks lead: a
+// directory that exists, with search permission (stating dir/. needs it,
+// as cd does). The answer is kept for the rest of the read.
+func (r *reader) enter(dir string) (string, bool) {
+	if e, ok := r.entered[dir]; ok {
+		return e.real, e.ok
 	}
-	real, err := filepath.EvalSymlinks(dir)
-	if err != nil {
-		return "", "", false
+	var e entered
+	if fi, err := os.Stat(strings.TrimSuffix(dir, string(filepath.Separator)) + string(filepath.Separator) + "."); err == nil && fi.IsDir() {
+		if real, err := filepath.EvalSymlinks(dir); err == nil {
+			e = entered{real, true}
+		}
 	}
-	return dir, real, true
+	if r.entered == nil {
+		r.entered = map[string]entered{}
+	}
+	r.entered[dir] = e
+	return e.real, e.ok
+}
+
+// existing resolves p through symlinks as far as it exists, and joins the
+// rest as named.
+func existing(p string) string {
+	if real, err := filepath.EvalSymlinks(p); err == nil {
+		return real
+	}
+	dir := filepath.Dir(p)
+	if dir == p {
+		return p
+	}
+	return filepath.Join(existing(dir), filepath.Base(p))
 }
 
 func isLetter(c byte) bool { return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' }
@@ -455,12 +499,12 @@ func uniq(a, b string) []string {
 	return []string{a, b}
 }
 
-// withDirFlags adds, to a part that names the directory a program runs in
-// (env -C, make --directory), that directory and the session's, so moving
-// the part elsewhere never hides a write there.
-func withDirFlags(ps []part, session string, pwsh bool) []part {
-	for i, p := range ps {
-		ws := words(p.text, pwsh)
+// withDirFlags adds, to a command that names the directory a program runs
+// in (env -C, make --directory), that directory and the session's, so
+// moving the command elsewhere never hides a write there.
+func withDirFlags(cmds []*simple, session string, pwsh bool) {
+	for _, c := range cmds {
+		ws := c.texts()
 		var extra, mayExtra []string
 		for k, w := range ws {
 			d := ""
@@ -476,25 +520,24 @@ func withDirFlags(ps []part, session string, pwsh bool) []part {
 				d = strings.ReplaceAll(d, `\`, "/")
 			}
 			d = filepath.FromSlash(d)
-			for _, c := range p.cwds {
+			for _, cw := range c.cwds {
 				if filepath.IsAbs(d) {
 					extra = append(extra, d)
 				} else {
-					extra = append(extra, filepath.Join(c, d))
+					extra = append(extra, filepath.Join(cw, d))
 				}
 			}
-			for _, c := range p.may {
+			for _, m := range c.may {
 				if filepath.IsAbs(d) {
 					mayExtra = append(mayExtra, d)
-				} else if c != anywhere {
-					mayExtra = append(mayExtra, filepath.Join(c, d))
+				} else if m != Anywhere {
+					mayExtra = append(mayExtra, filepath.Join(m, d))
 				}
 			}
 		}
 		if len(extra) > 0 {
-			ps[i].cwds = append(append(append([]string{}, p.cwds...), session), extra...)
-			ps[i].may = union(p.may, mayExtra)
+			c.cwds = append(append(append([]string{}, c.cwds...), session), extra...)
+			c.may = union(c.may, mayExtra)
 		}
 	}
-	return ps
 }

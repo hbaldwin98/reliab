@@ -19,6 +19,7 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 
 	"github.com/hbaldwin98/reliab/internal/gitx"
+	"github.com/hbaldwin98/reliab/internal/guard/effects"
 	"github.com/hbaldwin98/reliab/internal/hookio"
 	"github.com/hbaldwin98/reliab/internal/profile"
 	"github.com/hbaldwin98/reliab/internal/report"
@@ -59,8 +60,10 @@ func (r *Repo) protected() []string {
 // rels turns a path from a tool call into the repo-relative slash paths it
 // may name: with .. taken by name, as PowerShell takes it, and as the kernel
 // resolves it through symlinks (physical). It returns none for a path
-// outside the repository.
-func (r *Repo) rels(cwd, p string) []string {
+// outside the repository. resolved keeps physical's answers for one hook
+// call, so a path named from several directories is resolved once; nil
+// keeps none.
+func (r *Repo) rels(cwd, p string, resolved map[string]string) []string {
 	p = strings.Trim(p, `"'`)
 	if p == "" {
 		return nil
@@ -78,7 +81,14 @@ func (r *Repo) rels(cwd, p string) []string {
 	if rel, ok := gitx.Rel(r.Root, filepath.Clean(p)); ok {
 		out = append(out, rel)
 	}
-	if rel, ok := gitx.Rel(r.Root, physical(p)); ok && (len(out) == 0 || rel != out[0]) {
+	phys, ok := resolved[p]
+	if !ok {
+		phys = physical(p)
+		if resolved != nil {
+			resolved[p] = phys
+		}
+	}
+	if rel, ok := gitx.Rel(r.Root, phys); ok && (len(out) == 0 || rel != out[0]) {
 		out = append(out, rel)
 	}
 	return out
@@ -87,24 +97,45 @@ func (r *Repo) rels(cwd, p string) []string {
 // physical resolves p, an absolute path, as the kernel does
 // (path_resolution(7)): each component through symlinks before the next, so
 // a .. after a symlink leaves the directory the link leads to, not the one
-// it is named in. What does not exist yet is joined as named.
+// it is named in. What does not exist yet is joined as named. The
+// components between two ..s resolve in one call: with no .. among them,
+// resolving them together is resolving each in turn.
 func physical(p string) string {
 	vol := filepath.VolumeName(p)
 	cur := vol + string(filepath.Separator)
+	var run []string
+	flush := func() {
+		if len(run) > 0 {
+			cur = existing(filepath.Join(append([]string{cur}, run...)...))
+			run = run[:0]
+		}
+	}
 	for _, c := range strings.Split(filepath.ToSlash(p[len(vol):]), "/") {
 		if c == "" || c == "." {
 			continue
 		}
 		if c == ".." {
+			flush()
 			cur = filepath.Dir(cur)
 			continue
 		}
-		cur = filepath.Join(cur, c)
-		if real, err := filepath.EvalSymlinks(cur); err == nil {
-			cur = real
-		}
+		run = append(run, c)
 	}
+	flush()
 	return cur
+}
+
+// existing resolves p through symlinks as far as it exists, and joins the
+// rest as named.
+func existing(p string) string {
+	if real, err := filepath.EvalSymlinks(p); err == nil {
+		return real
+	}
+	dir := filepath.Dir(p)
+	if dir == p {
+		return p
+	}
+	return filepath.Join(existing(dir), filepath.Base(p))
 }
 
 // caseless says the file system ignores case by default, as Windows' and
@@ -170,7 +201,7 @@ func (r *Repo) holdsProtected(files []string, rel string) (string, bool) {
 
 // PreEdit denies Edit, Write, and NotebookEdit calls on protected paths (R2).
 func (r *Repo) PreEdit(in hookio.Input) hookio.Decision {
-	rels := r.rels(in.Cwd, in.ToolInput.Path())
+	rels := r.rels(in.Cwd, in.ToolInput.Path(), nil)
 	if len(rels) == 0 {
 		return hookio.Decision{}
 	}
@@ -245,129 +276,86 @@ func protectedReason(rel, glob string) string {
 }
 
 var (
-	// writeVerb matches shell and PowerShell commands that write, move, or
-	// delete files, with PowerShell's built-in aliases for them (del, ri,
-	// copy, sc, and the rest). It is a heuristic; the CI gate is the
-	// backstop.
-	writeVerb = regexp.MustCompile(`(?i)(^|[\s;&|(])(sed\s+(-[a-z]*i|--in-place)|perl\s+-[a-z]*i|cp|mv|rm|rmdir|tee|truncate|dd|install|ln|touch|chmod|` + gitSub + `(checkout|restore|rm|mv|clean|reset)|set-content|add-content|out-file|remove-item|copy-item|move-item|new-item|rename-item|clear-content|del|erase|ri|rd|copy|cpi|move|mi|sc|ac|ni|ren|rni|clc)\b`)
-	// dirVerb matches commands that rewrite or remove a whole directory's
-	// files when given one, so a directory holding an oracle is protected
-	// too. Other write verbs only write into a directory they name.
-	dirVerb = regexp.MustCompile(`(?i)(^|[\s;&|(])(rm|rmdir|` + gitSub + `(checkout|restore|rm|clean|reset)|remove-item|del|erase|ri|rd)\b`)
-	// commandSep splits a command line into simple commands.
-	commandSep = regexp.MustCompile(`[;&|\n]+`)
-	// redirect matches every output redirect, a numbered (2>) or &> one too
-	// (GNU Bash manual §3.6); >&1 names no file.
-	redirect = regexp.MustCompile(`(^|[^>])>{1,2}\s*([^\s;&|>]+)`)
-	// fileDup matches >&word where word names a file, not a descriptor.
-	fileDup = regexp.MustCompile(`>&\s*[^\s\d\-;&|<>]`)
-	// outputFlags name a file or directory a command writes.
-	outputFlags = map[string]bool{"--output": true, "--output-file": true, "--output-directory": true, "-outfile": true}
-	// shortOutputs are commands whose short option names the file they
-	// write. git's -o names one only in format-patch, which sets it.
-	shortOutputs = map[string]string{"curl": "-o", "sort": "-o", "go": "-o", "wget": "-O"}
-	pushCmd      = regexp.MustCompile(`(?i)\bgit\b[^;&|\n]*\bpush\b|\bgh\s+pr\s+create\b`)
+	// The person-only commands as typed, a net under the reader's
+	// invocations: they also catch reliab's words glued to other text (git
+	// -c alias.x='!reliab approve') and in any case (Reliab.EXE Findings
+	// Ack). They run on the line with its data blanked (effects.Effects.Code).
 	// The binary may be quoted: & "C:\tools\reliab.exe" findings ack.
 	ackCmd     = regexp.MustCompile(`(?i)\breliab(\.exe|\.cmd)?["']?\s+findings\s+ack\b`)
 	approveCmd = regexp.MustCompile(`(?i)\breliab(\.exe|\.cmd)?["']?\s+approve\b`)
-	tokenSep   = regexp.MustCompile(`[\s;&|()<>]+`)
 	verdictCmd = regexp.MustCompile(`(?i)\breliab(\.exe|\.cmd)?["']?\s+report\s+verdict\b`)
 	// baselineWrite changes the protected mutation baseline without naming
 	// its path.
 	baselineWrite = regexp.MustCompile(`(?i)\breliab(\.exe|\.cmd)?["']?\s+baseline\s+write\b`)
 )
 
-// gitSub matches git and the global options before its subcommand (git(1)
-// SYNOPSIS): -C <path> and -c <name>=<value>, the path options in either
-// spelling, and switches such as --no-pager. -C also moves where relative
-// paths resolve (dirFlags).
-const gitSub = `git(\s+(-c\s+\S+|--(git-dir|work-tree|namespace|exec-path|config-env)(=|\s+)\S+|-{1,2}[a-z][\w-]*))*\s+`
-
 // ReviewerAgent is the plugin's reviewer subagent as hooks see it: the only
 // caller allowed to record a verdict (knowledge/decisions/reviewer-verdict.md).
 const ReviewerAgent = "reliab:reviewer"
 
-// PreBash inspects Bash and PowerShell commands. It denies agents the human
+// shell is the language a hook's tool runs: the data rule is trusted only
+// for the Bash tool, whose shell the reader models.
+func shell(tool string) effects.Shell {
+	if tool == "PowerShell" {
+		return effects.PowerShell
+	}
+	if tool == "Bash" {
+		return effects.Bash
+	}
+	return effects.Unknown
+}
+
+// PreBash inspects Bash and PowerShell commands. It reads the line once
+// (package effects) and judges what it may do: it denies agents the human
 // acknowledgement and approval commands, everyone but the reviewer the
 // verdict command, writes to protected paths, and pushes or PR creation
 // without a fresh, complete pre-PR report.
 func (r *Repo) PreBash(in hookio.Input) hookio.Decision {
 	cmd := in.ToolInput.Command
-	// The person-only commands are judged on the code Bash may run, so their
-	// words in a commit message or an echo do not trip them. codeText models
-	// Bash only; a PowerShell or any other line is judged whole.
-	code := cmd
-	if in.ToolName == "Bash" {
-		code = codeText(cmd)
+	cwd := in.Cwd
+	if cwd == "" {
+		cwd = r.Root
 	}
-	// The regexes catch reliab's plain words anywhere in the line;
-	// personOnly reads the words past quoting, escapes, global flags, and a
-	// variable naming the binary (personcmd.go).
-	person := personOnly(code, in.ToolName == "PowerShell")
-	if ackCmd.MatchString(code) || person == "findings ack" {
+	e := effects.Read(cmd, shell(in.ToolName), cwd)
+	code := e.Code
+	if ackCmd.MatchString(code) || e.Invokes("findings", "ack") {
 		return hookio.Decision{Deny: "reliab: findings ack records a human decision; only a person runs it. Ask the user."}
 	}
-	if baselineWrite.MatchString(code) || person == "baseline write" {
+	if baselineWrite.MatchString(code) || e.Invokes("baseline", "write") {
 		return hookio.Decision{Deny: "reliab: baseline write changes the protected mutation baseline (R2); only a person runs it. Show the user reliab baseline propose and ask."}
 	}
-	if approveCmd.MatchString(code) || person == "approve" {
+	if approveCmd.MatchString(code) || e.Invokes("approve") {
 		return hookio.Decision{Deny: "reliab: approve records a person's approval of a protected-path change (R2); only a person runs it. " +
 			"List the change under questions for a human and stop; the user runs reliab approve <path> --by human:<name>."}
 	}
-	if (verdictCmd.MatchString(code) || person == "report verdict") && in.AgentType != ReviewerAgent {
+	if (verdictCmd.MatchString(code) || e.Invokes("report", "verdict")) && in.AgentType != ReviewerAgent {
 		return hookio.Decision{Deny: "reliab: report verdict is the reviewer's to record, never the author's. " +
 			"After a clean reliab verify --tier prepr, have the " + ReviewerAgent + " agent review the change; it records the verdict."}
 	}
+	// protected_commands stay a raw-text check
+	// (knowledge/decisions/protected-path-enforcement.md §5).
 	for _, re := range r.Profile.CommandGuards() {
 		if re.MatchString(cmd) {
 			return hookio.Decision{Deny: fmt.Sprintf("reliab: this command approves or rewrites a protected oracle (matches protected_commands %q). "+
 				"Oracles change only with human approval (R2): leave the diff for a person, classify the finding characterization-diff, and stop.", re.String())}
 		}
 	}
-	if d := r.protectedWrite(in.Cwd, cmd, in.ToolName == "PowerShell"); d.Deny != "" {
+	if d := r.protectedWrite(e); d.Deny != "" {
 		return d
 	}
-	if pushCmd.MatchString(cmd) {
+	if e.Push {
 		return r.PrePush()
 	}
 	return hookio.Decision{}
 }
 
 // protectedWrite judges each simple command on its own: a path is a write
-// target only as a redirection target, or as an operand after a write verb
-// in the same simple command. So a read that names a protected path or
-// .reliab/ passes, even beside a write elsewhere in the command line. A
-// relative path resolves in each directory its simple command may run in
-// (see parts); pwsh says the line is PowerShell.
-func (r *Repo) protectedWrite(cwd, cmd string, pwsh bool) hookio.Decision {
-	if cwd == "" {
-		cwd = r.Root
-	}
-	type target struct {
-		path string
-		cwds []string
-	}
-	var targets []target
-	// >| is a redirect that overrides noclobber (GNU Bash manual §3.6.2),
-	// not a pipe, and >&word one of stdout and stderr to a file unless word
-	// is a number or - (§3.6.4); the same length keeps every offset.
-	cmd = strings.ReplaceAll(cmd, ">|", "> ")
-	cmd = fileDup.ReplaceAllStringFunc(cmd, func(m string) string { return "> " + m[2:] })
-	ps := parts(cwd, cmd, pwsh)
-	for _, p := range ps {
-		dirs := union(p.cwds, p.may)
-		for _, m := range redirect.FindAllStringSubmatch(p.text, -1) {
-			targets = append(targets, target{m[2], dirs})
-		}
-		if loc := writeVerb.FindStringIndex(p.text); loc != nil {
-			for _, t := range tokenSep.Split(p.text[loc[1]:], -1) {
-				targets = append(targets, target{t, dirs})
-			}
-		}
-		for _, t := range outputs(words(p.text, pwsh)) {
-			targets = append(targets, target{t, dirs})
-		}
-	}
+// target only as a redirection target, an operand of a write verb, or an
+// output option's value, in the same simple command. So a read that names
+// a protected path or .reliab/ passes, even beside a write elsewhere in the
+// command line. A relative path resolves in each directory its command may
+// run in (effects.Command.Dirs).
+func (r *Repo) protectedWrite(e *effects.Effects) hookio.Decision {
 	var files, repoDirs []string
 	listed := false
 	list := func() []string {
@@ -377,34 +365,33 @@ func (r *Repo) protectedWrite(cwd, cmd string, pwsh bool) hookio.Decision {
 		}
 		return files
 	}
+	resolved := map[string]string{}
 	paths := func(dir, t string) []string {
-		if dir != anywhere {
-			return r.target(dir, t)
+		if dir != effects.Anywhere {
+			return r.target(dir, t, resolved)
 		}
 		if repoDirs == nil {
 			repoDirs = r.dirs(list())
 		}
-		return r.fromAnywhere(repoDirs, t)
+		return r.fromAnywhere(repoDirs, t, resolved)
 	}
-	for _, t := range targets {
-		for _, dir := range t.cwds {
-			for _, rel := range paths(dir, t.path) {
-				if g, hit := r.isProtected(rel); hit {
-					return hookio.Decision{Deny: protectedReason(rel, g)}
+	for _, c := range e.Commands {
+		for _, t := range c.Writes {
+			for _, dir := range c.Dirs {
+				for _, rel := range paths(dir, t) {
+					if g, hit := r.isProtected(rel); hit {
+						return hookio.Decision{Deny: protectedReason(rel, g)}
+					}
 				}
 			}
 		}
 	}
-	// A directory holding an oracle counts only as an argument of a command
+	// A directory holding an oracle counts only as an operand of a command
 	// that rewrites or removes a whole directory, in its own simple command,
 	// so not git -C's directory before the subcommand.
-	for _, p := range ps {
-		loc := dirVerb.FindStringIndex(p.text)
-		if loc == nil {
-			continue
-		}
-		for _, t := range tokenSep.Split(p.text[loc[1]:], -1) {
-			for _, dir := range union(p.cwds, p.may) {
+	for _, c := range e.Commands {
+		for _, t := range c.Whole {
+			for _, dir := range c.Dirs {
 				for _, rel := range paths(dir, t) {
 					if g, hit := r.holdsProtected(list(), rel); hit {
 						return hookio.Decision{Deny: protectedReason(rel, g)}
@@ -418,25 +405,27 @@ func (r *Repo) protectedWrite(cwd, cmd string, pwsh bool) hookio.Decision {
 
 // target turns one command token into the repo-relative paths it may name
 // (rels), skipping options and the null device.
-func (r *Repo) target(cwd, t string) []string {
+func (r *Repo) target(cwd, t string, resolved map[string]string) []string {
 	t = strings.Trim(t, `"'`)
 	if t == "" || strings.HasPrefix(t, "-") || t == "/dev/null" {
 		return nil
 	}
-	out := r.rels(cwd, t)
-	// Git Bash on Windows names drive C: /c, as cdTarget reads it.
+	out := r.rels(cwd, t, resolved)
+	// Git Bash on Windows names drive C: /c, as the reader's cd does.
 	// A drive's root itself (/c) holds no repository's file.
 	if runtime.GOOS == "windows" && len(t) > 2 && t[0] == '/' && isLetter(t[1]) && t[2] == '/' {
-		out = append(out, r.rels(cwd, t[1:2]+":/"+t[3:])...)
+		out = append(out, r.rels(cwd, t[1:2]+":/"+t[3:], resolved)...)
 	}
 	return out
 }
+
+func isLetter(c byte) bool { return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' }
 
 // fromAnywhere turns one relative command token into the repo-relative
 // paths it may name from a directory the hook cannot know. Its leading ..s
 // reach any directory, so what follows them is judged below each directory
 // of the repository (repoDirs) and each directory above it.
-func (r *Repo) fromAnywhere(repoDirs []string, t string) []string {
+func (r *Repo) fromAnywhere(repoDirs []string, t string, resolved map[string]string) []string {
 	t = strings.Trim(t, `"'`)
 	if t == "" || strings.HasPrefix(t, "-") || t == "/dev/null" {
 		return nil
@@ -446,7 +435,7 @@ func (r *Repo) fromAnywhere(repoDirs []string, t string) []string {
 	// Absolute, rooted, or on a drive: it names the same file from anywhere
 	// on that drive.
 	if filepath.IsAbs(p) || filepath.VolumeName(p) != "" || strings.HasPrefix(p, sep) {
-		return r.rels(r.Root, p)
+		return r.rels(r.Root, p, resolved)
 	}
 	p = filepath.Clean(p)
 	for p == ".." || strings.HasPrefix(p, ".."+sep) {
@@ -479,42 +468,6 @@ func (r *Repo) dirs(files []string) []string {
 			if _, hit := r.isProtected(d); !hit {
 				out = append(out, filepath.Join(r.Root, filepath.FromSlash(d)))
 			}
-		}
-	}
-	return out
-}
-
-// outputs returns the files a simple command's options name for output:
-// --output, --output-file, or --output-directory (git diff and log write
-// a patch with --output), PowerShell's -OutFile (also -OutFile:<path>),
-// and the short option of a command that writes there (shortOutputs):
-// git format-patch -o <dir>, curl -o, sort -o, go build -o, wget -O, with
-// the value attached or not.
-func outputs(ws []string) []string {
-	var out []string
-	short := ""
-	for k, w := range ws {
-		low := strings.ToLower(w)
-		if o, ok := shortOutputs[strings.TrimSuffix(path.Base(strings.ReplaceAll(low, `\`, "/")), ".exe")]; ok && short == "" {
-			short = o
-		}
-		if low == "format-patch" {
-			short = "-o"
-		}
-		name, val, eq := strings.Cut(low, "=")
-		if !eq && strings.HasPrefix(low, "-outfile:") {
-			name, val, eq = "-outfile", low[len("-outfile:"):], true
-		}
-		// An if chain, not a switch: Go coverage does not instrument case
-		// expressions, so gremlins never ran a mutant there.
-		if outputFlags[name] && eq {
-			out = append(out, w[len(w)-len(val):])
-		} else if outputFlags[name] || short != "" && w == short {
-			if k+1 < len(ws) {
-				out = append(out, ws[k+1])
-			}
-		} else if short != "" && strings.HasPrefix(w, short) {
-			out = append(out, w[len(short):])
 		}
 	}
 	return out
