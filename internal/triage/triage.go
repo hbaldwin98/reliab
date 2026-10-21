@@ -180,7 +180,7 @@ func (e *NotRescored) Error() string {
 func rescore(root string, r *report.Report) error {
 	scored := false
 	for _, c := range r.Run.Commands {
-		if mutscore.IsMutation(c.ID) && c.Mutants != nil {
+		if profile.IsMutation(c.ID) && c.Mutants != nil {
 			scored = true
 		}
 	}
@@ -254,7 +254,7 @@ const (
 	snapshotLines  = 24
 )
 
-func isMutation(f report.Finding) bool { return strings.HasPrefix(f.Command, "mutation_") }
+func isMutation(f report.Finding) bool { return profile.IsMutation(f.Command) }
 
 // generatedCommands run property and fuzz tests: their failing inputs are
 // generated, so the source a property cites can be silent on one.

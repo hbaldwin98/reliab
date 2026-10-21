@@ -52,7 +52,7 @@ func Mutation(root string, p *profile.Profile, tier string) ([]MutationLine, err
 	}
 	for _, id := range ids {
 		cmd, ok := p.Commands[id]
-		if !mutscore.IsMutation(id) || !ok {
+		if !profile.IsMutation(id) || !ok {
 			continue
 		}
 		held := cmd.Threshold != nil || (b != nil && len(b.Scopes) > 0)

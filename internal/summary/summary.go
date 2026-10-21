@@ -231,7 +231,7 @@ func Build(opt Options) (*Summary, error) {
 	}
 	for _, c := range r.Run.Commands {
 		s.Ran = append(s.Ran, Ran{ID: c.ID, ExitCode: c.ExitCode, ElapsedSec: c.ElapsedSec, Findings: count[c.ID], Mutants: c.Mutants, Coverage: c.Coverage, Relevance: c.Relevance})
-		if isMutation(c.ID) {
+		if profile.IsMutation(c.ID) {
 			m := Mutation{Command: c.ID, Mutants: c.Mutants, Score: c.Score, Survivors: []Item{}}
 			for _, f := range r.Findings {
 				if f.Command == c.ID && f.Kind != report.KindBelowThreshold {
@@ -295,8 +295,6 @@ func item(f report.Finding) Item {
 	}
 	return it
 }
-
-func isMutation(id string) bool { return strings.HasPrefix(id, "mutation_") }
 
 // notInTier lists the profile's commands that the report's tier does not
 // run. An on-demand report ran what it was asked to, so it has none.
