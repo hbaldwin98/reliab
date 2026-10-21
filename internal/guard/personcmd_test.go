@@ -83,6 +83,9 @@ func TestPreBashPersonOnlyHoweverSpelled(t *testing.T) {
 		{bash, `reliab findings check out.json`, false},
 		{bash, `git commit -m 'reliab "findings" ack is for a person'`, false},
 		{bash, `echo $r findings ack`, false},
+		// GNU Bash manual §3.2.4 Lists: ; ends a command, so a later
+		// command's words are never reliab's arguments.
+		{bash, `reliab --version; ls findings ack`, false},
 		{pwsh, `reliab report summary`, false},
 	}
 	for _, tt := range tests {

@@ -32,7 +32,7 @@ generated:
      it starts a command, and its command path is found as cobra finds
      it, past global flags and the word after a flag with no `=`. Until
      2026-10-20 they matched the words as typed, so `reliab "findings"
-     ack`, `relib findings ack`, `reliab --repo . findings ack`, and
+     ack`, `reli\ab findings ack`, `reliab --repo . findings ack`, and
      `$r findings ack` passed; an alias or function wrapping `reliab` still
      does. These match only text Bash may run. A Bash line whose every simple
      command is `echo`, `cat`, `grep`, or `git add|commit|tag|notes|status|log|show|diff`
