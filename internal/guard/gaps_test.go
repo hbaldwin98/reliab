@@ -124,6 +124,27 @@ func TestProtectedPathThroughSymlink(t *testing.T) {
 	}
 }
 
+// knowledge/decisions/hook-decisions-v0.md: a path is judged as the kernel
+// resolves it through symlinks. A file a write creates does not exist yet,
+// but the directories naming it do, so a new file named through a link
+// lands where the link leads.
+func TestProtectedNewFileThroughSymlink(t *testing.T) {
+	t.Parallel()
+	r := open(t, passing)
+	testrepo.Write(t, r.Root, "snapshots/sub/t.txt", "t")
+	if err := os.Symlink(filepath.Join(r.Root, "snapshots", "sub"), filepath.Join(r.Root, "src", "l")); err != nil {
+		t.Skipf("cannot create a symlink: %v", err)
+	}
+	for _, cmd := range []string{"echo x > src/l/new.txt", "cp x src/l/new/deeper.txt"} {
+		if d := r.PreBash(hookio.Input{ToolName: "Bash", Cwd: r.Root, ToolInput: hookio.ToolInput{Command: cmd}}); d.Deny == "" {
+			t.Errorf("%q was allowed", cmd)
+		}
+	}
+	if d := r.PreEdit(hookio.Input{Cwd: r.Root, ToolInput: hookio.ToolInput{FilePath: "src/l/new.txt"}}); d.Deny == "" {
+		t.Error("edit src/l/new.txt was allowed")
+	}
+}
+
 // NTFS on Windows and APFS as macOS formats it by default ignore case
 // (Microsoft, "Case sensitivity"; Apple, "File system formats available in
 // Disk Utility"); Linux file systems do not.
