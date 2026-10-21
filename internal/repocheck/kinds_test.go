@@ -1,28 +1,12 @@
 package repocheck
 
 import (
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/hbaldwin98/reliab/internal/report"
 )
-
-// The finding kinds live in report.Kinds; these tests keep every document
-// that lists them in step, so a kind added in code cannot be missing from
-// the docs an agent or a person reads
-// (knowledge/decisions/finding-classification.md).
-
-func readFile(t *testing.T, path string) string {
-	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(root, path))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return strings.ReplaceAll(string(raw), "\r\n", "\n")
-}
 
 // section returns the Markdown under heading, up to the next heading of the
 // same or a higher level.

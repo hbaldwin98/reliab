@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hbaldwin98/reliab/internal/mutscore"
+	"github.com/hbaldwin98/reliab/internal/profile"
 	"github.com/hbaldwin98/reliab/internal/report"
 )
 
@@ -36,7 +36,7 @@ const lockPoll = 500 * time.Millisecond
 // nightly tier, or any run with a mutation command. An inner run without
 // one, or an on-demand run of light commands, never waits.
 func heavy(tier string, onDemand bool, run []string) bool {
-	if slices.ContainsFunc(run, mutscore.IsMutation) {
+	if slices.ContainsFunc(run, profile.IsMutation) {
 		return true
 	}
 	return !onDemand && (tier == "prepr" || tier == "nightly")

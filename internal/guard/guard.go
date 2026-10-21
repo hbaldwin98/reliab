@@ -511,7 +511,7 @@ func (r *Repo) PrePush() hookio.Decision {
 		if v.Outcome != report.VerdictPass {
 			return hookio.Decision{Deny: "reliab: the reviewer's verdict is " + v.Outcome + ": " + v.Notes}
 		}
-		if v.TreeHash != rep.Run.TreeHash {
+		if !rep.VerdictCurrent() {
 			return hookio.Decision{Deny: "reliab: the reviewer's verdict is for another tree. Have the " + ReviewerAgent + " agent review the change again."}
 		}
 	}

@@ -195,6 +195,9 @@ func TestBranchHistory(t *testing.T) {
 	}
 	if got, _, err := BranchHistory(root, "main", "", time.Date(2026, 10, 18, 9, 0, 0, 0, time.UTC)); err != nil || len(got) != 0 {
 		t.Errorf("before the feature run: %d run(s), %v; want none", len(got), err)
+	}
+}
+
 // knowledge/decisions/report-freshness.md: a report vouches for the tree it
 // ran on, and for no tree once the tree changed while it ran, even the tree
 // it started on.
