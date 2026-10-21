@@ -29,8 +29,13 @@ var Formats = []string{"markdown", "json"}
 // Summary is what the report says, arranged for a reviewer. Its JSON form
 // is the --format json output.
 type Summary struct {
-	Tier          string  `json:"tier"`
-	Profile       string  `json:"profile"`
+	Tier    string `json:"tier"`
+	Profile string `json:"profile"`
+	// ProfilePath is the profile file the run loaded; JudgedBy is the one
+	// this summary judged it by, the default unless the default protects
+	// ProfilePath (knowledge/decisions/report-profile-path.md).
+	ProfilePath   string  `json:"profilePath,omitempty"`
+	JudgedBy      string  `json:"judgedBy,omitempty"`
 	Tool          string  `json:"tool"`
 	StartedAt     string  `json:"startedAt"`
 	ElapsedSec    float64 `json:"elapsedSec"`
@@ -212,14 +217,16 @@ func Build(opt Options) (*Summary, error) {
 	}
 	s.VerdictCurrent = r.VerdictCurrent()
 
-	// The report is judged by the profile it ran with; protected paths always
-	// come from the default profile (protected-path-approval.md).
+	// The report is judged by the profile it ran with when the default
+	// profile protects that file; protected paths always come from the
+	// default profile (protected-path-approval.md, report-profile-path.md).
 	profileBase := ""
-	judgeWith, def := r.ProfileFile(opt.Root, profile.DefaultPath), filepath.Join(opt.Root, profile.DefaultPath)
-	prof, err := profile.Load(judgeWith)
+	s.ProfilePath = r.Run.ProfilePath
+	prof, judgedBy, err := r.JudgeProfile(opt.Root)
+	s.JudgedBy = judgedBy
 	protProf := prof
-	if judgeWith != def {
-		protProf, _ = profile.Load(def)
+	if judgedBy != profile.DefaultPath {
+		protProf, _ = profile.Load(filepath.Join(opt.Root, profile.DefaultPath))
 	}
 	if err != nil {
 		s.FreshError = err.Error()
@@ -406,6 +413,13 @@ func Markdown(s *Summary) string {
 	}
 	p("- Run: %s tier, profile `%s`, %s, started %s, %.1fs of a %s budget, %s.\n",
 		s.Tier, s.Profile, s.Tool, s.StartedAt, s.ElapsedSec, budget(s.BudgetSec), complete)
+	if s.ProfilePath != "" && s.ProfilePath != profile.DefaultPath {
+		p("- Profile file `%s`; judged by `%s`", s.ProfilePath, s.JudgedBy)
+		if s.JudgedBy != s.ProfilePath {
+			p(", since `%s` does not protect it", profile.DefaultPath)
+		}
+		p(".\n")
+	}
 	at := ""
 	if s.Head != "" {
 		at = fmt.Sprintf(" at commit `%s`", short(s.Head))

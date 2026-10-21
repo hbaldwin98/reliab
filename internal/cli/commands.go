@@ -234,12 +234,14 @@ func newGateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			// Judged by the profile the report ran with (verify -f).
-			path := filepath.Join(root, profile.DefaultPath)
-			if rep, err := report.Read(report.LatestPath(root, tier)); err == nil {
-				path = rep.ProfileFile(root, profile.DefaultPath)
+			// Judged by the profile the report ran with when the default
+			// profile protects it (report-profile-path.md).
+			var p *profile.Profile
+			if rep, rerr := report.Read(report.LatestPath(root, tier)); rerr == nil {
+				p, _, err = rep.JudgeProfile(root)
+			} else {
+				p, err = profile.Load(filepath.Join(root, profile.DefaultPath))
 			}
-			p, err := profile.Load(path)
 			if err != nil {
 				return withCode(ExitConfig, err)
 			}

@@ -14,6 +14,7 @@ import (
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
+	"github.com/hbaldwin98/reliab/internal/profile"
 	"github.com/hbaldwin98/reliab/schemas"
 )
 
@@ -281,6 +282,29 @@ func (r *Report) ProfileFile(root, fallback string) string {
 		return p
 	}
 	return filepath.Join(root, p)
+}
+
+// JudgeProfile loads the profile that judges r: its thresholds, tiers,
+// baseline, and freshness excludes. That is the file r's run loaded when it
+// is the default profile or a path the default profile protects, so a
+// change to it needs a person's approval; otherwise it is the default
+// profile. A file an agent wrote must not lower a threshold, skip the
+// baseline, or drop product code from the tree hash
+// (knowledge/decisions/report-profile-path.md). path is the file loaded,
+// relative to root unless outside it.
+func (r *Report) JudgeProfile(root string) (p *profile.Profile, path string, err error) {
+	def := filepath.Join(root, profile.DefaultPath)
+	dp, err := profile.Load(def)
+	if err != nil {
+		return nil, profile.DefaultPath, err
+	}
+	alt := r.ProfileFile(root, profile.DefaultPath)
+	rel := r.Run.ProfilePath
+	if alt == def || filepath.IsAbs(filepath.FromSlash(rel)) || !profile.Protects(dp, rel) {
+		return dp, profile.DefaultPath, nil
+	}
+	p, err = profile.Load(alt)
+	return p, rel, err
 }
 
 // VerdictCurrent reports whether r carries a verdict recorded on r's own

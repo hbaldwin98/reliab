@@ -133,11 +133,13 @@ func classifyFixed(root, id string, change func(*report.Finding) error, notFound
 // with, as the summary of it reads it, or "" when it names none or cannot
 // be read.
 func profileBase(root string) string {
-	path := filepath.Join(root, profile.DefaultPath)
-	if r, err := report.Read(report.LatestPath(root, "prepr")); err == nil {
-		path = r.ProfileFile(root, profile.DefaultPath)
+	var p *profile.Profile
+	var err error
+	if r, rerr := report.Read(report.LatestPath(root, "prepr")); rerr == nil {
+		p, _, err = r.JudgeProfile(root)
+	} else {
+		p, err = profile.Load(filepath.Join(root, profile.DefaultPath))
 	}
-	p, err := profile.Load(path)
 	if err != nil {
 		return ""
 	}
@@ -225,7 +227,7 @@ func rescore(root string, r *report.Report) error {
 	if !scored {
 		return nil
 	}
-	p, err := profile.Load(r.ProfileFile(root, profile.DefaultPath))
+	p, _, err := r.JudgeProfile(root)
 	if err != nil {
 		return err
 	}

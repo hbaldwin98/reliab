@@ -1,6 +1,7 @@
 # Update Log
 
 ## 2026-10-20
+* **Update**: [report-profile-path](/decisions/report-profile-path.md): a recorded profile file judges its report only when `reliability-profile.yaml` protects it; an unprotected one falls back to the default, so a second profile an agent wrote cannot narrow freshness, thresholds, or the baseline. The summary names the file.
 * **Update**: [external-adapters](/decisions/external-adapters.md): the JUnit and TRX failure readers moved to the public `pkg/testresults`; the in-repo insta and Verify adapters had imported them from `internal/adapters`, access an external adapter does not have.
 * **Creation**: Added [report-profile-path](/decisions/report-profile-path.md): a report names the profile file it ran with (`verify -f`), and summary, `gate mutation`, classify's re-score, and the verdict's freshness check load it; protection stays on `reliability-profile.yaml`.
 * **Update**: [finding-classification](/decisions/finding-classification.md): `classify` of a fixed finding writes to the newest run of this branch that holds it, chosen by the code the PR summary's fixed list uses; a later run of the same id on another branch in the checkout had taken the classification where the summary never reads.
