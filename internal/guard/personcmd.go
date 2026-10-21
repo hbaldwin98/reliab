@@ -25,10 +25,6 @@ var wrappers = map[string]bool{"&": true, ".": true, "env": true, "sudo": true, 
 // that a simple command of code may run, or "". pwsh says the line is
 // PowerShell.
 func personOnly(code string, pwsh bool) string {
-	return personOnlyIn(code, pwsh, 0)
-}
-
-func personOnlyIn(code string, pwsh bool, depth int) string {
 	// A line continuation joins two lines into one command (GNU Bash manual
 	// §3.1.2.1; a PowerShell backtick before a newline).
 	code = strings.NewReplacer("\\\r\n", " ", "\\\n", " ", "`\r\n", " ", "`\n", " ").Replace(code)
@@ -47,14 +43,16 @@ func personOnlyIn(code string, pwsh bool, depth int) string {
 		v := verb(ws)
 		for i, w := range ws {
 			// Code nested in a word, as in bash -c '...', pwsh -c, iex, or
-			// cmd /c, is read as a command line of its own.
-			if depth < 3 && strings.ContainsAny(w, " \t") {
-				if c := personOnlyIn(w, pwsh, depth+1); c != "" {
+			// cmd /c, is read as a command line of its own. Such a word
+			// lost its quotes, so it is shorter than code: this ends.
+			if strings.ContainsAny(w, " \t") {
+				if c := personOnly(w, pwsh); c != "" {
 					return c
 				}
 			}
 			name, variable := binaryName(w)
-			runs := name == "reliab" || variable && (i == v || i > 0 && wrappers[strings.ToLower(ws[i-1])])
+			// A variable not first comes after the command's name, so i > 0.
+			runs := name == "reliab" || variable && (i == v || wrappers[strings.ToLower(ws[i-1])])
 			if !runs {
 				continue
 			}
@@ -126,7 +124,8 @@ func commandPath(args []string, pwsh bool) string {
 
 // isFlag reports whether a word is an option or a redirect (>x, 2>, <in).
 func isFlag(a string) bool {
-	return strings.HasPrefix(a, "-") || strings.TrimLeft(a, "0123456789&") != "" && strings.IndexByte("<>", strings.TrimLeft(a, "0123456789&")[0]) >= 0
+	r := strings.TrimLeft(a, "0123456789&")
+	return strings.HasPrefix(a, "-") || strings.HasPrefix(r, "<") || strings.HasPrefix(r, ">")
 }
 
 // matchPath reports whether the positional words hold cmd's words in order,

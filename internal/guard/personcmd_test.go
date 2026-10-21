@@ -98,6 +98,7 @@ func TestPreBashPersonOnlyHoweverSpelled(t *testing.T) {
 		// A redirect before the command path (§3.6).
 		{bash, `reliab >/dev/null findings ack F-1`, true},
 		{bash, `reliab 2>&1 findings ack F-1`, true},
+		{bash, `reliab <answers.txt findings ack F-1`, true},
 		// PowerShell: a backtick in an argument, a splat, Start-Process's
 		// argument list, curly quotes (about_Splatting, about_Quoting_Rules).
 		{pwsh, "reliab findings a`ck F-1", true},
@@ -129,6 +130,7 @@ func TestPreBashPersonOnlyHoweverSpelled(t *testing.T) {
 		// GNU Bash manual §3.2.4 Lists: ; ends a command, so a later
 		// command's words are never reliab's arguments.
 		{bash, `reliab --version; ls findings ack`, false},
+		{bash, `true; reliab --version; ls findings ack`, false},
 		{pwsh, `reliab report summary`, false},
 	}
 	for _, tt := range tests {
