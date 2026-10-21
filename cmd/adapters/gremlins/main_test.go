@@ -54,6 +54,29 @@ func TestConvert(t *testing.T) {
 	}
 }
 
+// A per-package run also mutates the changed files of a package nested
+// under it (a prepr run in internal/guard reported effects/lex.go), and
+// against the wrong tests reports them not covered. The adapter's contract
+// (header comment, knowledge/decisions/external-adapters.md: gremlins runs
+// per package) is that a package's mutants come from its own run, so the
+// nested file is dropped here and counted only from its own report.
+func TestConvertDropsNestedPackages(t *testing.T) {
+	const parent = `{"go_module":"example.com/m","files":[
+  {"file_name":"guard.go","mutations":[{"type":"CONDITIONALS_NEGATION","status":"LIVED","line":5,"column":2}]},
+  {"file_name":"effects/lex.go","mutations":[{"type":"ARITHMETIC_BASE","status":"NOT COVERED","line":7,"column":3}]}]}`
+	got, counts, err := convert([]byte(parent), "internal/guard", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].File != "internal/guard/guard.go" || counts != (findings.MutantCounts{Survived: 1}) {
+		t.Errorf("mutants = %+v, counts %+v; want only guard.go's", got, counts)
+	}
+	// A report with no DIR is a module-root run: its paths are the module's.
+	if got, _, _ := convert([]byte(parent), "", nil); len(got) != 2 {
+		t.Errorf("module-root report kept %d mutants, want 2", len(got))
+	}
+}
+
 func TestParseChanged(t *testing.T) {
 	got, err := parseChanged([]byte(`{"base":"main","files":{"a.go":[[3,3],[11,12]]}}`))
 	if err != nil {
