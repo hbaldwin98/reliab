@@ -17,13 +17,17 @@ import (
 func BenchmarkPreBash(b *testing.B) {
 	r := benchRepo(b)
 	msg := strings.Repeat("Guard: read the line once; a person runs reliab approve. ", 20)
+	// A PR body or jq program in a quoted heredoc substitution, the form
+	// AGENTS.md has agents use for gh pr create --body.
+	body := strings.Repeat("- ran `go test ./...` (all ok); see $(x) and \\\"quoted 'nested (text)' here\\\"\n", 50)
 	lines := map[string]string{
-		"go test":    "go test ./...",
-		"commit":     `git add -A && git commit -m "` + msg + `"`,
-		"pipeline":   "go test ./internal/... 2>&1 | grep -v '^ok' | head -50",
-		"cd chain":   "cd src && go vet ./... && cd .. && git status --short",
-		"write":      "echo x > src/a/out.txt",
-		"powershell": `Get-ChildItem -Recurse src | Select-String -Pattern "TODO"`,
+		"heredoc body": "gh pr view --json title --jq \"$(cat <<'EOF'\n" + body + "EOF\n)\"",
+		"go test":      "go test ./...",
+		"commit":       `git add -A && git commit -m "` + msg + `"`,
+		"pipeline":     "go test ./internal/... 2>&1 | grep -v '^ok' | head -50",
+		"cd chain":     "cd src && go vet ./... && cd .. && git status --short",
+		"write":        "echo x > src/a/out.txt",
+		"powershell":   `Get-ChildItem -Recurse src | Select-String -Pattern "TODO"`,
 	}
 	for name, line := range lines {
 		tool := "Bash"

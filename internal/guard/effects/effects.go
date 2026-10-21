@@ -110,6 +110,15 @@ type nestedCode struct {
 type reader struct {
 	e       *Effects
 	entered map[string]entered
+	// scanned holds, per text maybeText read, the least depth it was read
+	// at: a quoted body is met again in each word and line holding it, and
+	// reading it once keeps a long one linear.
+	scanned map[scanKey]int
+}
+
+type scanKey struct {
+	text string
+	sh   Shell
 }
 
 // read collects the effects of a lexed line whose commands start in dirs.
@@ -301,6 +310,14 @@ func (r *reader) maybeText(t string, sh Shell, depth int) {
 	if depth >= maxDepth || !strings.Contains(strings.ToLower(t), "reliab") && !strings.ContainsAny(t, "$@`(") {
 		return
 	}
+	k := scanKey{t, sh}
+	if d, ok := r.scanned[k]; ok && d <= depth {
+		return
+	}
+	if r.scanned == nil {
+		r.scanned = map[scanKey]int{}
+	}
+	r.scanned[k] = depth
 	l := lex(t, sh, depth+1)
 	pwsh := sh == PowerShell
 	l.any(func(c *simple) bool {
