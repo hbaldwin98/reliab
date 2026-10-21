@@ -81,6 +81,25 @@ Re-run the same `reliab verify --only ...` command until every survivor is
 killed or classified. Then run `reliab verify --tier inner`, because you
 changed tests, and act on it as the verify skill says.
 
+## A baseline for the area
+
+The profile's `mutation_baseline` file records a score per scope that later
+runs must not fall below. When the person asks for a baseline (in a
+`maintained` repository, the first mutation work after onboarding), run
+`mutation_full` over the area as in step 1, and before killing any
+survivor:
+
+```sh
+reliab baseline propose --scope '<area>/**'
+```
+
+It prints the file it would write and what changes; it writes nothing. Give
+the person that output, the survivor count, and the command to record it:
+`reliab baseline write --scope '<area>/**'`. Writing and committing the
+baseline is theirs; hooks remind you that it is. Survivors are then handled
+as in step 2, area by area, on the person's say-so: the baseline measures
+the suite as it is, and killing survivors first would hide that.
+
 ## Report
 
 Say what ran (command, scope, tier budget, time), how many mutants survived,

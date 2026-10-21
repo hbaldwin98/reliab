@@ -83,6 +83,32 @@ func TestAdaptersDocumented(t *testing.T) {
 	}
 }
 
+// reliab docs overview is how an agent in a consumer repository explains
+// reliab, so it names every skill a person can invoke and the reviewer.
+func TestOverviewNamesSkills(t *testing.T) {
+	overview := readFile(t, "docs/overview.md")
+	entries, err := os.ReadDir(filepath.Join(root, "plugin", "skills"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, e := range entries {
+		if !e.IsDir() || strings.Contains(readFile(t, "plugin/skills/"+e.Name()+"/SKILL.md"), "\nuser-invocable: false\n") {
+			continue
+		}
+		n++
+		if !strings.Contains(overview, "`/reliab:"+e.Name()+"`") && !strings.Contains(overview, "`"+e.Name()+"` skill") {
+			t.Errorf("docs/overview.md does not name the %s skill", e.Name())
+		}
+	}
+	if n == 0 {
+		t.Fatal("no skills under plugin/skills")
+	}
+	if !strings.Contains(overview, "`reliab:reviewer`") {
+		t.Error("docs/overview.md does not name the reliab:reviewer agent")
+	}
+}
+
 // Every hook script the project settings run exists, so a session in this
 // repository does not start with a failing hook.
 func TestProjectHookScriptsExist(t *testing.T) {

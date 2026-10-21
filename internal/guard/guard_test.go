@@ -239,7 +239,8 @@ func TestStopOpenFindings(t *testing.T) {
 
 func TestSessionStart(t *testing.T) {
 	r := open(t, failing)
-	if c := r.SessionStart(hookio.Input{}).Context; !strings.Contains(c, "profile test") || !strings.Contains(c, "No report yet") {
+	if c := r.SessionStart(hookio.Input{}).Context; !strings.Contains(c, "profile test") || !strings.Contains(c, "No report yet") ||
+		!strings.Contains(c, "characterize (around a refactor") || !strings.Contains(c, "reliab docs overview") {
 		t.Fatalf("context = %q", c)
 	}
 	run(t, r, "inner")

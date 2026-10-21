@@ -351,3 +351,16 @@ Give the person:
    project conversion, an oracle to protect, a CI probe), with your
    recommendation.
 6. **Skipped**: anything you did not probe and why.
+7. **Next steps**, for the person to choose; you start none of them:
+   - **CI**: the commands to wire and where each runs (`reliab docs ci`
+     has them), and the S0 probes on a CI agent, which set `verified_on`.
+   - **What leads, by starting condition.** maintained: a mutation
+     baseline over the existing suite, area by area: you run
+     `reliab verify --only mutation_full --scope <area> --tier nightly`
+     and `reliab baseline propose --scope '<area>/**'`, the person runs
+     `reliab baseline write` and commits it (the mutation skill has the
+     steps); name the areas to start with and the time each run will take
+     from your T4 timings. legacy: characterization first, starting with the
+     most-used surface, and who answers legacy-versus-intended questions.
+     greenfield: properties and mutation on the first endpoint.
+   - The open questions from item 5 that block any of these.

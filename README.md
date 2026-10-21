@@ -86,7 +86,8 @@ The profile's commands receive them as `{tests}`, `{mutation_tests}`,
 command with `needs: [tests]` leaves the run incomplete until they are named.
 
 The plugin's `mutation`, `properties`, and `fuzz` skills drive the whole
-loop for one area.
+loop for one area. `reliab docs overview` prints what to run when, for an
+agent asked to explain reliab in a repository without this README.
 
 Around a refactor or migration, capture an area's behavior, change it, and
 compare; the profile's `characterize` command writes the transcripts:
@@ -141,7 +142,8 @@ See [knowledge/decisions/external-adapters.md](knowledge/decisions/external-adap
 
 ## CI
 
-reliab writes no CI configuration. Wire these into whatever CI you use:
+reliab writes no CI configuration. Wire these into whatever CI you use
+(`reliab docs ci` prints the full page for the installed version):
 
 ```sh
 reliab verify --tier prepr                       # every push; exit 0 passes

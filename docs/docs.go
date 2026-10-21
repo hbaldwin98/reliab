@@ -9,5 +9,16 @@ import _ "embed"
 //go:embed adapters.md
 var Adapters string
 
+// Overview is what reliab does in a repository and what to run when
+// (overview.md), for an agent asked to explain or use it.
+//
+//go:embed overview.md
+var Overview string
+
+// CI is the commands to wire into CI (ci.md).
+//
+//go:embed ci.md
+var CI string
+
 // Pages maps a reliab docs topic to its page.
-var Pages = map[string]string{"adapters": Adapters}
+var Pages = map[string]string{"adapters": Adapters, "ci": CI, "overview": Overview}
