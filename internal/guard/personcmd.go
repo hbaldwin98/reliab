@@ -72,17 +72,14 @@ func personOnly(code string, pwsh bool) string {
 func binaryName(w string) (string, bool) {
 	w = strings.TrimPrefix(w, "$(")
 	w = strings.TrimLeft(w, "(`")
-	if k := strings.IndexAny(w, ")`"); k >= 0 {
-		w = w[:k]
-	}
+	w, _, _ = strings.Cut(w, ")")
+	w, _, _ = strings.Cut(w, "`")
 	p := strings.ReplaceAll(strings.ToLower(w), `\`, "/")
 	base := path.Base(p)
 	if base == "main.go" {
 		base = path.Base(path.Dir(p))
 	}
-	if k := strings.IndexByte(base, '@'); k > 0 {
-		base = base[:k]
-	}
+	base, _, _ = strings.Cut(base, "@")
 	for _, ext := range []string{".exe", ".cmd", ".bat", ".ps1"} {
 		base = strings.TrimSuffix(base, ext)
 	}
