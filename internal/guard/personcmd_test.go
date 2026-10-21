@@ -6,34 +6,6 @@ import (
 	"github.com/hbaldwin98/reliab/internal/hookio"
 )
 
-// Cobra's command path (cobra user guide: commands and flags): the words
-// that are not flags, where the word after a --flag with no = is that
-// flag's value, never a command; a flag with = takes none. Only possible
-// values may come before or between the path's words.
-func TestCommandPath(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		args []string
-		want string
-	}{
-		{nil, ""},
-		{[]string{"--repo", ".", "findings", "ack"}, "findings ack"},
-		{[]string{"findings", "--by", "x", "ack"}, "findings ack"},
-		{[]string{"-C", "dir", "approve", "p"}, "approve"},
-		{[]string{".", "findings", "ack"}, ""},
-		{[]string{"findings", "x", "ack"}, ""},
-		{[]string{"findings", "--by=x", "y", "ack"}, ""},
-		{[]string{"report"}, ""},
-		{[]string{"report", "route", "verdict"}, ""},
-		{[]string{"baseline", "write"}, "baseline write"},
-	}
-	for _, tt := range tests {
-		if got := commandPath(tt.args, false); got != tt.want {
-			t.Errorf("commandPath(%q) = %q, want %q", tt.args, got, tt.want)
-		}
-	}
-}
-
 // knowledge/decisions/hook-decisions-v0.md: deny reliab findings ack,
 // approve, and baseline write to agents, and report verdict to all but the
 // reviewer, however the line spells them. The shell removes quotes and

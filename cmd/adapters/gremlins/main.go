@@ -4,7 +4,8 @@
 //	reliab-adapter-gremlins [-base REF] findings.json REPORT...
 //
 // Each REPORT is a gremlins -o file (none means no package changed), or DIR=FILE when gremlins ran on package
-// DIR, whose file names are then relative to DIR. Lived and not-covered
+// DIR, whose file names are then relative to DIR; a file in a directory
+// under DIR is another package's and is left to that package's report. Lived and not-covered
 // mutants become findings; timeouts count as caught. With -base, only
 // mutants on lines changed since REF are kept: the lines reliab
 // changed-lines prints (since the merge base with REF, uncommitted changes
@@ -136,6 +137,12 @@ func convertFiles(raw []byte, dir string, keep func(string, int) bool, files map
 	var ms []findings.Mutant
 	for _, f := range r.Files {
 		file := filepath.ToSlash(f.FileName)
+		// gremlins run in DIR also mutates the changed files of packages
+		// nested under it, against DIR's tests, so it reports them all not
+		// covered; each nested package has its own run and report.
+		if dir != "" && strings.Contains(file, "/") {
+			continue
+		}
 		if dir != "" && dir != "." {
 			file = path.Join(dir, file)
 		}

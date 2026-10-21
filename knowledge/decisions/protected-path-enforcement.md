@@ -29,7 +29,9 @@ sandbox does not run on native Windows (it does on macOS, Linux, and WSL2).
    protect [R2](/rules/r2-protected-oracles.md) oracles.
 2. A PreToolUse Bash hook (`reliab hook pre-bash`) denies `sed -i`, `cp`, `mv`,
    `rm`, `git checkout`, `git restore`, and similar commands naming a protected
-   path. Heuristic.
+   path. Heuristic. Since 2026-10-20 it reads each line once as its shell
+   does, so quoting, escapes, continuations, and `bash -c` do not hide a
+   write ([command-effects](/decisions/command-effects.md)).
 3. `init` also writes `sandbox.filesystem.denyWrite` entries (`./<dir>` for
    protected globs of the form `<dir>/**`) but never enables the sandbox:
    enabling it sandboxes every command and starts network access from an

@@ -17,7 +17,10 @@ generated:
   protected path or `.reliab/`. Directory targets count when they contain a
   protected path.
 - **pre-bash** (Bash and PowerShell, one process per call; see
-  [enforcement-hooks-self-contained](/decisions/enforcement-hooks-self-contained.md)):
+  [enforcement-hooks-self-contained](/decisions/enforcement-hooks-self-contained.md);
+  since 2026-10-20 it reads the line once and judges what it may do,
+  [command-effects](/decisions/command-effects.md), so every respelling
+  below holds for each of these checks):
   1. deny `reliab findings ack`, which records a human decision, and
      `reliab baseline write`, which changes the protected mutation baseline
      ([mutation-threshold](/decisions/mutation-threshold.md)), and
@@ -43,6 +46,9 @@ generated:
      script, another language's process call, or a separator inside
      quotes still gets past them. These match only text Bash may run. A Bash line whose every simple
      command is `echo`, `cat`, `grep`, or `git add|commit|tag|notes|status|log|show|diff`
+     (since 2026-10-20 also `cd`, `pushd`, git with `-C` or another path
+     option before the subcommand, and a substitution whose own code is
+     all data, as in `git commit -m "$(cat <<'EOF' … EOF)"`)
      has its arguments and heredoc bodies blanked first, unless any command
      on it holds, outside quotes, a comment, `$'`, parentheses, braces, a
      redirect, or a backtick, or a substitution in its quotes or an
@@ -60,7 +66,12 @@ generated:
      `Remove-Item`, PowerShell's aliases for them such as `del`, `ri`,
      `copy`, and `sc`, and similar; until 2026-10-20 the aliases were
      missed) followed by one in the same simple command
-     (the command line split at `;`, `&`, `|`, and newlines), or an option
+     (the command line split at `;`, `&`, `|`, and newlines; since
+     2026-10-20 the verb must be the command it runs, past wrappers such
+     as `sudo`, `env`, or `xargs`, so `grep cp snapshots` writes nothing,
+     and `find -delete`, `find -exec rm`, and `dd of=` count, while
+     `git restore --staged` and a `git reset` without `--hard`, `--merge`,
+     or `--keep` change only the index and do not), or an option
      naming one for output (`--output`, `--output-file`,
      `--output-directory`, `-OutFile` or `-OutFile:<path>`, and `-o` for
      `git format-patch`, `curl`, `sort`, and `go`, `-O` for `wget`, the
@@ -106,8 +117,10 @@ generated:
      where the link leads; and where the file system ignores case (Windows,
      macOS) a protected glob matches in any case. Before, each of these let
      a write to a protected path through;
-  3. on `git push` or `gh pr create` anywhere in the command, apply the
-     [pre-push gate](/decisions/pre-push-v0.md).
+  3. on `git push` or `gh pr create` where a shell runs it, apply the
+     [pre-push gate](/decisions/pre-push-v0.md). Until 2026-10-20 their
+     words anywhere in the command counted, so "git push" in test data, a
+     commit message, or `git log --grep push` was gated.
 - **stop**: allow when `stop_hook_active` is set. Block when product-class
   files changed since the newest inner or prepr report (diffing the report's
   tree against the current tree; when there is no report, against HEAD and

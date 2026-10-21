@@ -347,3 +347,14 @@ func TestPrePushVerdictBoundToTree(t *testing.T) {
 		t.Errorf("edit after review: %+v", d)
 	}
 }
+
+// A finding with no test is about a profile command; session start names it
+// "command <id>", as reliab report route (triage.Route) and the PR summary
+// do, so the agent reads the same subject in each.
+func TestSessionStartNamesACommandFinding(t *testing.T) {
+	r := open(t, failing)
+	run(t, r, "inner")
+	if c := r.SessionStart(hookio.Input{}).Context; !strings.Contains(c, "open F-analyzers [unclassified] command analyzers\n") {
+		t.Fatalf("context = %q", c)
+	}
+}

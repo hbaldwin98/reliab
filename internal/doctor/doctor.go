@@ -122,7 +122,7 @@ func denyRules(root string, p *profile.Profile) []Check {
 		have[d] = true
 	}
 	var missing []string
-	for _, r := range DenyRules(root, p) {
+	for _, r := range profile.DenyRules(root, p) {
 		if !have[r] {
 			missing = append(missing, r)
 		}
@@ -131,35 +131,6 @@ func denyRules(root string, p *profile.Profile) []Check {
 		return []Check{{"deny rules", Warn, "missing " + strings.Join(missing, ", ") + "; run reliab profile init"}}
 	}
 	return []Check{{"deny rules", OK, fmt.Sprintf("%d rules", len(have))}}
-}
-
-// DenyRules are the permission deny rules that protect reliab's outputs and
-// the profile's protected paths. Claude Code checks every file-editing tool
-// (Edit, Write, NotebookEdit) and Bash redirects against Edit(path) rules;
-// Write(path) rules are accepted but never consulted.
-func DenyRules(root string, p *profile.Profile) []string {
-	globs := append([]string{".reliab/**"}, p.ProtectedPaths...)
-	out := make([]string, 0, len(globs))
-	// The profile being onboarded is the agent's to write until the person
-	// commits it; re-running reliab profile init then adds its rule.
-	uncommitted := gitx.BlobAt(root, "HEAD", profile.DefaultPath) == ""
-	for _, g := range globs {
-		if g == profile.DefaultPath && uncommitted {
-			continue
-		}
-		out = append(out, "Edit("+RuleGlob(g)+")")
-	}
-	return out
-}
-
-// RuleGlob anchors a repo-relative glob for a permission rule: "**/" globs
-// match at any depth; others get a leading "/", which anchors them at the
-// project root when Claude Code starts there.
-func RuleGlob(g string) string {
-	if strings.HasPrefix(g, "**/") || strings.HasPrefix(g, "/") {
-		return g
-	}
-	return "/" + g
 }
 
 func versionPin(root string) []Check {

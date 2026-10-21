@@ -13,7 +13,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/hbaldwin98/reliab/internal/doctor"
 	"github.com/hbaldwin98/reliab/internal/profile"
 	"github.com/hbaldwin98/reliab/internal/version"
 	"github.com/hbaldwin98/reliab/templates"
@@ -127,7 +126,7 @@ func ensureSettings(root string, p *profile.Profile) (string, error) {
 	before, _ := json.Marshal(s)
 
 	perms := object(s, "permissions")
-	appendUnique(perms, "deny", doctor.DenyRules(root, p)...)
+	appendUnique(perms, "deny", profile.DenyRules(root, p)...)
 	appendUnique(perms, "allow", "Bash(reliab *)")
 	object(object(s, "extraKnownMarketplaces"), MarketplaceName)["source"] = map[string]any{
 		"source": "github", "repo": MarketplaceRepo,

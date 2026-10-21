@@ -1,120 +1,13 @@
 package guard
 
 import (
-	"os"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 	"testing"
 
 	"github.com/hbaldwin98/reliab/internal/hookio"
 )
-
-// GNU Bash manual §3.2.4 Lists: commands separated by ; run in sequence,
-// and after || the next runs when the one before failed; §4.1 cd changes
-// the shell's working directory, which no separator undoes. So a cd stays
-// in effect after ;, ||, and a newline, and one the hook cannot follow may
-// lead anywhere (knowledge/decisions/hook-decisions-v0.md: a write to a
-// protected path is denied wherever its simple command may run). A review
-// of v0.1.3 allowed cd internal; rm ../reliability-profile.yaml.
-func TestPartsMayRun(t *testing.T) {
-	t.Parallel()
-	session, out := scratch(t), scratch(t)
-	o := filepath.ToSlash(out)
-	tests := []struct {
-		cmd  string
-		part int
-		want []string
-	}{
-		{"cd " + o + "; rm x", 1, []string{session, out}},
-		{"cd " + o + "\nrm x", 1, []string{session, out}},
-		{"cd " + o + " || exit; rm x", 2, []string{session, out}},
-		{"cd " + o + " && true; rm x", 2, []string{session, out}},
-		{"cd " + o + " && cd sub || rm x", 2, []string{session, out, filepath.Join(out, "sub")}},
-		{"true || cd " + o + " && rm x", 2, []string{session, out}},
-		// A cd surely run and joined by && moves what follows.
-		{"cd " + o + " && rm x", 1, []string{out}},
-		{"cd $D && rm x", 1, []string{session, anywhere}},
-		{"cd $D; cd " + o + " && rm x", 2, []string{out, anywhere}},
-		{"popd; rm x", 1, []string{session, anywhere}},
-		// A line the hook cannot track: anywhere when it may change directory.
-		{"cd " + o + "; rm x # tidy", 1, []string{session, anywhere}},
-		{"source env.sh; rm x", 1, []string{session, anywhere}},
-		{"echo $(date); rm x", 1, []string{session}},
-	}
-	for _, tt := range tests {
-		ps := parts(session, tt.cmd, false)
-		if tt.part >= len(ps) {
-			t.Errorf("%q: %d parts, want more than %d", tt.cmd, len(ps), tt.part)
-			continue
-		}
-		got := ps[tt.part].may
-		if len(got) != len(tt.want) {
-			t.Errorf("%q: part %d may run in %q, want %q", tt.cmd, tt.part, got, tt.want)
-			continue
-		}
-		for _, w := range tt.want {
-			if !slices.Contains(got, w) {
-				t.Errorf("%q: part %d may run in %q, want %q", tt.cmd, tt.part, got, tt.want)
-				break
-			}
-		}
-	}
-}
-
-// GNU Bash manual §3.5.2 Tilde Expansion: a tilde expands only where it
-// begins a word, and PowerShell's ~ only as a path's first character, so a
-// cd into a Windows short name such as C:\Users\RUNNER~1 is followed, as
-// any literal directory is (knowledge/decisions/hook-decisions-v0.md).
-func TestPartsTildeInsideAName(t *testing.T) {
-	t.Parallel()
-	session, out := scratch(t), scratch(t)
-	dir := filepath.Join(out, "a~1")
-	if err := os.Mkdir(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	ps := parts(session, "cd "+filepath.ToSlash(dir)+" && rm x", false)
-	if got := ps[1].cwds[0]; got != dir {
-		t.Errorf("cd into a~1: runs in %q, want %q", got, dir)
-	}
-	ps = parts(session, "cd ~1 && rm x", false)
-	if got := ps[1].cwds; len(got) != 1 || got[0] != session {
-		t.Errorf("cd ~1: runs in %q, want the session's", got)
-	}
-}
-
-// knowledge/decisions/hook-decisions-v0.md: an option naming a file for
-// output is a write target: git-diff(1) --output=<file> or --output <file>;
-// Invoke-WebRequest -OutFile <path> or, as PowerShell binds any parameter,
-// -OutFile:<path> (about_Parameters); git-format-patch(1) -o <dir>, the
-// value attached or not (gitcli(7): a short option's value may be stuck);
-// curl(1) -o. git-ls-files(1) -o is --others and names no output, and an
-// option with no word after it names nothing.
-func TestOutputs(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		ws   []string
-		want []string
-	}{
-		{[]string{"git", "diff", "--output=Snap/x"}, []string{"Snap/x"}},
-		{[]string{"git", "diff", "--output", "Snap/x"}, []string{"Snap/x"}},
-		{[]string{"Invoke-WebRequest", "u", "-OutFile:Snap\\x"}, []string{"Snap\\x"}},
-		{[]string{"Invoke-WebRequest", "u", "-OutFile", "x"}, []string{"x"}},
-		{[]string{"git", "format-patch", "-oDir"}, []string{"Dir"}},
-		{[]string{"git", "format-patch", "-o", "Dir"}, []string{"Dir"}},
-		{[]string{"curl", "-o", "x", "u"}, []string{"x"}},
-		{[]string{"git", "ls-files", "-o", "x"}, nil},
-		{[]string{"echo", "-oops", "x"}, nil},
-		{[]string{"curl", "u", "-o"}, nil},
-		{[]string{"git", "diff", "--output"}, nil},
-	}
-	for _, tt := range tests {
-		if got := outputs(tt.ws); !slices.Equal(got, tt.want) {
-			t.Errorf("outputs(%q) = %q, want %q", tt.ws, got, tt.want)
-		}
-	}
-}
 
 // knowledge/decisions/hook-decisions-v0.md: after a cd the hook cannot
 // follow, a path is judged from every directory holding a file git sees;
