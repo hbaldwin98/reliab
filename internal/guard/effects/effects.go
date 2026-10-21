@@ -132,9 +132,10 @@ func (r *reader) read(l *line, dirs []string, data bool, depth int) {
 
 		// Code the command runs: substitutions, subshells and groups,
 		// a -c string, code its standard input carries.
+		// A substitution on a line that is all data is all data itself.
 		for _, w := range c.words {
 			for _, s := range w.subs {
-				r.read(s, cmdDirs, false, depth+1)
+				r.read(s, cmdDirs, data, depth+1)
 			}
 		}
 		for _, g := range c.groups {
@@ -142,7 +143,7 @@ func (r *reader) read(l *line, dirs []string, data bool, depth int) {
 		}
 		for _, b := range c.bodies {
 			for _, s := range b.subs {
-				r.read(s, cmdDirs, false, depth+1)
+				r.read(s, cmdDirs, data, depth+1)
 			}
 		}
 		if depth < maxDepth {
