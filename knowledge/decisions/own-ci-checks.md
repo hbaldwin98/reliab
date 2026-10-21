@@ -56,9 +56,11 @@ or that the public repository stays free of private names
   helpers already commit with a fixed identity.
 - **Release gate** (`scripts/release-gate.sh SHA`, first step of `release`):
   a tag publishes only when a ci run succeeded on the tag's commit, or when
-  that commit changes only `plugin/.claude-plugin/plugin.json` and ci
-  succeeded on its parent. The release order is: get main green on all three
-  OSes, commit the version bump alone, tag it, push the tag, push main, then
+  that commit changes only `plugin/.claude-plugin/plugin.json` (and at most
+  `knowledge/log.md`, where past release commits recorded the release) and ci
+  succeeded on its parent; a refusal names what else the commit changes. The
+  release order is: get main green on all three OSes, commit the version bump,
+  tag it, push the tag, push main, then
   update the README's install lines; the tag goes first because plugin.json's
   version makes the launcher download that release, so ci has not run on the
   bump commit when the release starts. Waiting for a ci run on the tag would

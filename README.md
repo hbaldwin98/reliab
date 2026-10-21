@@ -194,7 +194,10 @@ the binary outright.
 
 ## Release
 
-1. Set `version` in `plugin/.claude-plugin/plugin.json` to `X.Y.Z` and commit.
+1. On a commit ci passed on, set `version` in `plugin/.claude-plugin/plugin.json`
+   to `X.Y.Z` and commit it, with at most the release's line in
+   `knowledge/log.md`: the release workflow takes ci's pass on the parent for
+   that commit, and refuses one that changes anything else until ci passes on it.
    To check the archives first, run `goreleaser check` and
    `goreleaser release --snapshot --clean` (goreleaser v2): `dist/` gets one
    archive per OS and architecture, each holding `reliab`, every

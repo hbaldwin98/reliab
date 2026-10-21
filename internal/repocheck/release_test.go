@@ -326,3 +326,99 @@ func TestInstallPs1FromLocalMirror(t *testing.T) {
 		t.Fatalf("installed reliab: %v %s", err, out)
 	}
 }
+
+// scripts/release-gate.sh passes a tag on a commit ci passed on, or on the
+// release's version bump on such a commit, which may record the release in
+// knowledge/log.md as past releases did (README "Release";
+// knowledge/decisions/own-ci-checks.md); a bump that changes anything else
+// waits for ci.
+func TestReleaseGate(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no sh")
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git")
+	}
+	dir := t.TempDir()
+	run := func(name string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command(name, args...)
+		cmd.Dir = dir
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("%s %v: %v", name, args, err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	git := func(args ...string) string {
+		t.Helper()
+		return run("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false"}, args...)...)
+	}
+	write := func(path, body string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, path)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, path), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	commit := func(files map[string]string) string {
+		t.Helper()
+		for path, body := range files {
+			write(path, body)
+		}
+		git("add", "-A")
+		git("commit", "-q", "-m", "c")
+		return git("rev-parse", "HEAD")
+	}
+	gate, err := os.ReadFile(filepath.Join(root, "scripts", "release-gate.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stubs := t.TempDir()
+	// gh reports one successful ci run for the commit GREEN names, none else.
+	if err := os.WriteFile(filepath.Join(stubs, "gh"), []byte("#!/bin/sh\ncase \"$*\" in *\"head_sha=$GREEN&\"*) echo 1 ;; *) echo 0 ;; esac\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	git("init", "-q")
+	green := commit(map[string]string{
+		"scripts/release-gate.sh":           string(gate),
+		"plugin/.claude-plugin/plugin.json": `{"version":"0.1.5"}`,
+		"knowledge/log.md":                  "# Update Log\n",
+		"main.go":                           "package main\n",
+	})
+	passes := func(sha string) (bool, string) {
+		t.Helper()
+		cmd := exec.Command(sh, filepath.Join(dir, "scripts", "release-gate.sh"), sha)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GREEN="+green, "GITHUB_REPOSITORY=o/r", "PATH="+stubs+string(os.PathListSeparator)+os.Getenv("PATH"))
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			if _, ok := err.(*exec.ExitError); !ok {
+				t.Fatal(err)
+			}
+		}
+		return err == nil, string(out)
+	}
+	if ok, out := passes(green); !ok {
+		t.Errorf("a commit ci passed on was refused: %s", out)
+	}
+	bump := commit(map[string]string{"plugin/.claude-plugin/plugin.json": `{"version":"0.1.6"}`})
+	if ok, out := passes(bump); !ok {
+		t.Errorf("the version bump alone was refused: %s", out)
+	}
+	git("reset", "-q", "--hard", green)
+	bumpLog := commit(map[string]string{"plugin/.claude-plugin/plugin.json": `{"version":"0.1.6"}`, "knowledge/log.md": "# Update Log\n\nv0.1.6\n"})
+	if ok, out := passes(bumpLog); !ok {
+		t.Errorf("the version bump with its log line was refused: %s", out)
+	}
+	git("reset", "-q", "--hard", green)
+	bumpCode := commit(map[string]string{"plugin/.claude-plugin/plugin.json": `{"version":"0.1.6"}`, "main.go": "package main\n\nfunc main() {}\n"})
+	if ok, out := passes(bumpCode); ok {
+		t.Errorf("a bump that changes code passed: %s", out)
+	} else if !strings.Contains(out, "main.go") {
+		t.Errorf("the refusal does not name what else the bump changes: %s", out)
+	}
+}
