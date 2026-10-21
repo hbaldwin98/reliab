@@ -189,3 +189,14 @@ func TestUndecidedIsUntouched(t *testing.T) {
 		t.Errorf("undecided finding changed: %+v", got)
 	}
 }
+
+// finding-classification.md: the newest acknowledgement recorded for an id
+// carries. A finding that already holds an older one takes the newer; only
+// the same acknowledgement counts as already held.
+func TestHeldOlderAcknowledgementTakesTheNewer(t *testing.T) {
+	cur := acked("human:early", "2026-10-20T09:00:00Z")
+	past := []*report.Report{run("prepr", "2026-10-20T08:00:00Z", acked("human:late", "2026-10-20T10:00:00Z"))}
+	if got := decide(past, cur); got.Acknowledged == nil || got.Acknowledged.By != "human:late" {
+		t.Errorf("acknowledged = %+v, want human:late's newer one", got.Acknowledged)
+	}
+}
