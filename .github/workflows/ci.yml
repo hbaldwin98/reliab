@@ -1,18 +1,47 @@
 # reliab's own CI. This is not a template for users; reliab is CI-agnostic.
+# Each check is a script under scripts/ that runs the same locally.
 name: ci
 on:
   push:
     branches: [main]
   pull_request:
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    env:
+      # The range this push or pull request adds.
+      BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # The owner keeps the denylisted names in the NAME_DENYLIST secret;
+      # without it (a fork's pull request) the names check is skipped.
+      - run: scripts/check-names.sh "$BASE..$HEAD_SHA"
+        env:
+          NAME_DENYLIST: ${{ secrets.NAME_DENYLIST }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
+      - run: scripts/lint.sh "$BASE"
   test:
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      # Tests must not lean on a developer's global git config.
+      GIT_CONFIG_GLOBAL: /dev/null
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The README version test reads plugin.json's history.
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -28,8 +57,13 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
       - run: go install gotest.tools/gotestsum@latest
-      - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+      # The profile's analyzers command calls golangci-lint from PATH: the
+      # version pinned in tools/go.mod, built with this module's toolchain.
+      - run: go install -modfile=tools/go.mod github.com/golangci/golangci-lint/v2/cmd/golangci-lint
       # reliab verifies itself. Allowed to fail until stage S0 has verified
       # the fillings in reliability-profile.yaml.
       - run: go run ./cmd/reliab verify --tier prepr

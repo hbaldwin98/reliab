@@ -18,4 +18,5 @@ reliab on itself and, on a `vX.Y.Z` tag, uses goreleaser to publish binaries
 for Windows, macOS, and Linux (amd64 and arm64) plus checksums, and stamps the
 plugin `version` ([versioning-lockstep](/decisions/versioning-lockstep.md)).
 This is reliab's own CI, not a template for users
-([ci-agnostic](/decisions/ci-agnostic.md)).
+([ci-agnostic](/decisions/ci-agnostic.md)). Its checks and the release gate
+are in [own-ci-checks](/decisions/own-ci-checks.md).
