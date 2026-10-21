@@ -62,6 +62,10 @@ type Options struct {
 	// Characterize is required to run the characterize command, which only
 	// reliab characterize runs (knowledge/decisions/on-demand-characterization.md).
 	Characterize *Characterize
+	// LockDir holds the machine's heavy-run lock. Empty means reliab's
+	// directory in the user cache, or no lock in a test binary
+	// (knowledge/decisions/heavy-run-lock.md).
+	LockDir string
 }
 
 // BuildID is the profile command that builds the code; when it fails the
@@ -137,6 +141,18 @@ func Run(ctx context.Context, opt Options) (*report.Report, string, error) {
 	baseline, err := mutscore.LoadBaseline(opt.Root, prof)
 	if err != nil {
 		return nil, "", err
+	}
+
+	// One heavy run per machine; the wait is not part of the budget.
+	var lockHeld string
+	if dir := lockDir(opt); dir != "" && heavy(tier.Name, len(opt.Only) > 0, tier.Run) {
+		me := holder{PID: os.Getpid(), Repo: opt.Root, Tier: reportTier, StartedAt: report.Now(opt.Now())}
+		release, pid, err := acquireHeavy(ctx, dir, me, opt.Log, lockPoll)
+		if err != nil {
+			return nil, "", fmt.Errorf("heavy-run lock: %w", err)
+		}
+		defer release()
+		lockHeld = strconv.Itoa(pid)
 	}
 
 	start := opt.Now()
@@ -233,6 +249,9 @@ func Run(ctx context.Context, opt Options) (*report.Report, string, error) {
 		"RELIAB_TESTS="+jsonList(tests),
 		"RELIAB_MUTATION_TESTS="+jsonList(mutationTests),
 	)
+	if lockHeld != "" {
+		env = append(env, lockEnv+"="+lockHeld)
+	}
 
 	what := "--tier " + tier.Name
 	if reportTier == report.OnDemand {
