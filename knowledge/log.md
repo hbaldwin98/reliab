@@ -1,6 +1,7 @@
 # Update Log
 
 ## 2026-10-21
+* **Creation**: Added [fuzz-and-e2e](/decisions/fuzz-and-e2e.md) and the role [T15](/roles/t15-fuzzing.md): `fuzz` (coverage-guided fuzzing, time-boxed by the tier's new `fuzz_seconds`: 120 at prepr, 1800 at night, passed as `{fuzz_seconds}` and `RELIAB_FUZZ_SECONDS`) and `e2e` join prepr and nightly. A `fuzz` skill runs it on demand; the onboard skill gains a step that configures each tool for speed and records the timings; the example profiles show both commands.
 * **Creation**: Added [light-guardrails](/decisions/light-guardrails.md): hooks remind and never deny: an edit to a protected path, a person-only reliab command at a command position, a protected command or edit, and a push each get a reminder, a stop one nudge; `reliab profile init` writes no permission deny rules. The shell reader `internal/guard/effects` and the dev shell-write hook are removed. [command-effects](/decisions/command-effects.md) and [pre-push-v0](/decisions/pre-push-v0.md) are deprecated; AGENTS.md and its template are cut to the testing workflow.
 
 ## 2026-10-20

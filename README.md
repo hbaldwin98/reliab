@@ -1,8 +1,10 @@
 # reliab
 
-A stack-neutral CLI and Claude Code plugin that runs layered reliability
-evidence inside an agent's edit loop and enforces the testing contract through
-the harness rather than the prompt.
+A stack-neutral testing CLI and Claude Code plugin: one tool that runs a
+project's tests in tiers (the edit loop, before a merge, nightly) and, on
+demand, mutation, property, fuzz, snapshot, and end-to-end runs, turning
+each tool's output into findings. Use it from your shell, or let an agent
+drive it through the plugin's skills.
 
 - What reliab is and why: [knowledge/overview.md](knowledge/overview.md)
 - Design decisions: [knowledge/decisions/](knowledge/decisions/)
@@ -40,9 +42,11 @@ the harness rather than the prompt.
    starting condition, which files are protected oracles, who approves
    them), runs `init` if you have not, inventories the test projects, re-runs
    the suite to list flaky tests, and fills each tool role T1 to T14 only
-   after a probe ran here and reliab read its output; anything else is marked
+   after a probe ran here and reliab read its output (T15, fuzzing, is
+   reliab's own and optional); anything else is marked
    not applicable with a reason or recorded under `corrections`. It wires
-   the commands and tiers (inner under 5 minutes), runs `reliab doctor` and
+   the commands and tiers (inner under 5 minutes), configuring each tool for
+   speed here (diff-only mutation, job counts, fuzz time boxes), runs `reliab doctor` and
    both tiers, and stops with an S0 report: what is filled and why not,
    timings, flaky tests, and open questions. It never edits product code or
    existing tests. Complete example profiles for made-up Go, Rust, and .NET
@@ -63,6 +67,8 @@ To test one area on demand, name the commands and the paths:
 
 ```sh
 reliab verify --only mutation_full --scope internal/report --tier prepr
+reliab verify --only fuzz --scope internal/parser --tier nightly   # fuzz_seconds: 120 prepr, 1800 nightly
+reliab verify --only e2e --tier prepr
 ```
 
 This runs only those commands, under the tier's budget, with `{impacted}`,
@@ -79,8 +85,8 @@ The profile's commands receive them as `{tests}`, `{mutation_tests}`,
 `RELIAB_TESTS`, and `RELIAB_MUTATION_TESTS`, the report records them, and a
 command with `needs: [tests]` leaves the run incomplete until they are named.
 
-The plugin's `mutation` and `properties` skills drive the whole loop for one
-area.
+The plugin's `mutation`, `properties`, and `fuzz` skills drive the whole
+loop for one area.
 
 Around a refactor or migration, capture an area's behavior, change it, and
 compare; the profile's `characterize` command writes the transcripts:

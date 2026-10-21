@@ -132,6 +132,7 @@ type ImpactedMap struct {
 type Tier struct {
 	BudgetSeconds *int     `json:"budget_seconds,omitempty"`
 	PropertyCases *int     `json:"property_cases,omitempty"`
+	FuzzSeconds   *int     `json:"fuzz_seconds,omitempty"`
 	Run           []string `json:"run,omitempty"`
 }
 

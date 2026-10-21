@@ -19,6 +19,7 @@ protected_paths:
   - "**/snapshots/**"
   - "crates/service/tests/fixtures/stores/**"
   - "proptest-regressions/**"
+  - "fuzz/artifacts/**"
   - "mutants.toml"
 
 # insta accepts snapshots from its CLI and from INSTA_UPDATE without naming
@@ -49,6 +50,7 @@ roles:
   T12: { tool: cargo-llvm-cov, version: 0.6.21, verified: 2026-10-18 }
   T13: { applicable: false, reason: "no read path slated for rewrite" }
   T14: { tool: clippy, verified: 2026-10-18 }
+  T15: { tool: cargo-fuzz, version: 0.13.1, verified: 2026-10-18, notes: "needs a nightly toolchain; targets under fuzz/ over the protocol decoder; crashes saved in fuzz/artifacts" }
 
 commands:
   build: cargo build --workspace --locked --all-targets
@@ -76,13 +78,20 @@ commands:
     output: target/nextest/faults/junit.xml
     # The fault tests are in service, which builds on service-protocol.
     relevant_when: ["crates/service/**", "crates/service-protocol/**", "Cargo.toml", "Cargo.lock"]
+  # Each target in fuzz/ for an equal share of the time box; the corpus in
+  # fuzz/corpus carries over between runs.
+  fuzz:
+    run: >-
+      t=$(cargo +nightly fuzz list | wc -l); for f in $(cargo +nightly fuzz list); do
+      cargo +nightly fuzz run "$f" -- -max_total_time=$(( {fuzz_seconds} / t + 1 )) || exit 1; done
+    relevant_when: ["crates/service-protocol/**", "fuzz/**", "Cargo.lock"]
   # No mutation_baseline: reliab-adapter-cargo-mutants writes no per-file
   # counts, so a baseline scope could not be scored. Hold changed code to a
   # threshold instead once the first full run has been measured.
   mutation_changed:
     run: >-
       rm -rf .reliab/out/mutants.out; git diff {base} > .reliab/out/diff.patch;
-      cargo mutants --in-diff .reliab/out/diff.patch -o .reliab/out;
+      cargo mutants --in-diff .reliab/out/diff.patch -o .reliab/out --jobs 4;
       reliab-adapter-cargo-mutants -exit $? .reliab/out/mutants.out .reliab/out/mutation.json
     format: findings
     output: .reliab/out/mutation.json

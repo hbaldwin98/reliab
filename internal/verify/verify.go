@@ -225,7 +225,8 @@ func Run(ctx context.Context, opt Options) (*report.Report, string, error) {
 	}
 	vars := map[string]string{
 		"{impacted}": impacted, "{cases}": strconv.Itoa(tier.PropertyCases), "{seed}": seed,
-		"{scope}": strings.Join(scope, " "), "{base}": rep.Run.Base,
+		"{fuzz_seconds}": strconv.Itoa(tier.FuzzSeconds),
+		"{scope}":        strings.Join(scope, " "), "{base}": rep.Run.Base,
 		"{tests}": shellWords(tests), "{mutation_tests}": shellWords(mutationTests),
 	}
 	captureDir := ""
@@ -243,6 +244,7 @@ func Run(ctx context.Context, opt Options) (*report.Report, string, error) {
 		"RELIAB_TIER="+tier.Name,
 		"RELIAB_SEED="+seed,
 		"RELIAB_PROPERTY_CASES="+strconv.Itoa(tier.PropertyCases),
+		"RELIAB_FUZZ_SECONDS="+strconv.Itoa(tier.FuzzSeconds),
 		"RELIAB_SCOPE="+strings.Join(scope, " "),
 		"RELIAB_CAPTURE_DIR="+captureDir,
 		"RELIAB_BASE="+rep.Run.Base,

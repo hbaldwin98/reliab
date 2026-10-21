@@ -1,6 +1,6 @@
 ---
 name: onboard
-description: Adopt reliab in the current repository (stage S0) - write the profile, inventory the tests, probe each tool role T1 to T14 on the real code, wire commands and tiers within budget, and stop at the S0 gate with a report for the person. Use when asked to onboard, adopt, set up, or install reliab in a repository, or to fill in reliability-profile.yaml.
+description: Adopt reliab in the current repository (stage S0) - write the profile, inventory the tests, probe each tool role T1 to T15 on the real code, configure each tool to run fast here, wire commands and tiers within budget, and stop at the S0 gate with a report for the person. Use when asked to onboard, adopt, set up, or install reliab in a repository, or to fill in reliability-profile.yaml.
 argument-hint: [greenfield | maintained | legacy]
 ---
 
@@ -130,13 +130,13 @@ After each run, save the failing test names from
   "flaky: failed N of M runs" and what varies, if you can tell.
 - Quarantine nothing. Every one of these goes in the report for the person.
 
-Record the median run time; it decides the tiers in step 6. If the suite
+Record the median run time; it decides the tiers in step 7. If the suite
 cannot build or run at all, stop here and report: S0 needs a suite that
 runs.
 
 ## 5. Probe each role
 
-For each role T1 to T14, in this order: find the tool in use (or the
+For each role T1 to T15, in this order: find the tool in use (or the
 ecosystem's usual one, if none is), wire its command, probe it, and record
 the outcome. A probe has two halves: a real run on this repository through
 reliab, and a deliberate failure (in a scratch worktree) that reliab turns
@@ -152,6 +152,7 @@ produced a finding through reliab is not verified.
 | T5 in-process host | (inside `unit` or `integration_tests`) | an existing test starts the application in-process; name it |
 | T6 typed client | (inside `unit` or `integration_tests`) | an existing test calls the application through its own request types; name it |
 | T7 API fuzzing | `api_fuzz` | the fuzzer runs from the API's spec against a local instance; a failure carries a reproducer |
+| T15 fuzzing | `fuzz` | `{fuzz_seconds}` (or `RELIAB_FUZZ_SECONDS`) reaches every target and bounds the run; a planted crash becomes a finding with its saved input, and a re-run replays it; `0` replays the corpus only |
 | T8 network faults | `faults_http` | an injected fault between the application and a store reaches a test |
 | T9 HTTP stubs | `faults_http` | a scripted failure from a stubbed dependency reaches a test |
 | T10 store faults | `faults_db` | a seeded store failure in the test host reaches a test |
@@ -162,9 +163,16 @@ produced a finding through reliab is not verified.
 Tests too slow for the edit loop because they start the application or
 need a real store or service go in `integration_tests`, which runs in prepr
 and nightly, not inner; keep `store_tests` for logic that lives in the
-store. `integration_tests` depends on no single role, so a role marked not
-applicable or missing never skips it; leave it out of the profile when the
-repository has no such suite.
+store. Tests of the whole system (a browser, several services, a deployed
+build) go in `e2e`, also prepr and nightly; give it `relevant_when` so a
+change that cannot reach it skips it. Neither depends on a role, so a role
+marked not applicable or missing never skips them; leave each out of the
+profile when the repository has no such suite.
+
+T15 is reliab's own role, not the paper's: coverage-guided fuzzing of code
+that takes untrusted bytes (parsers, decoders, protocol readers). Mark it
+not applicable when no such code exists. Its saved crashing inputs are
+oracles: add their directory to `protected_paths`.
 
 T13 (shadow experiments) needs a planned rewrite and production reads; it is
 almost always `applicable: false` at S0.
@@ -245,7 +253,38 @@ role's `notes`, and the failed claim goes in `corrections`:
   scale with the codebase; never write a time into a comment that the
   report does not show.
 
-## 6. Wire tiers within budget
+## 6. Make each tool fast here
+
+Most of a tier's time is spent inside the tools, and how fast each runs
+depends on how it is invoked on this codebase, not on reliab. For each tool
+you wired, look for its own speed options in its docs, try them on a real
+run, and keep what shortens the run without hiding failures. Record each
+choice and the time it saved in the role's `notes`, and a claim that failed
+in `corrections`. Where to look first:
+
+- **Mutation (T4)**: a diff-only mode for `mutation_changed` (mutants on
+  changed lines only, from `{base}`); the tool's own parallelism, set below
+  the CPU count when tests time out under load (a timed-out mutant can read
+  as killed); a per-mutant timeout from the measured test time; running
+  only the tests that cover a mutant, when the tool can; an incremental or
+  history mode that skips mutants unchanged since the last run, when the
+  tool has one; and `relevant_when` or the scope so unrelated changes run
+  nothing.
+- **Properties (T2)**: the tiers' `property_cases` (100, 1000, 10000) are a
+  start; time a run at each and lower a tier's count if it alone eats the
+  budget.
+- **Fuzzing (T15)**: the tiers' `fuzz_seconds`; a corpus kept between runs
+  (outside `.reliab/`, which is cleared) so each run starts where the last
+  ended; a split of the time among targets that favours the code a change
+  touched.
+- **Unit and end-to-end**: the `{impacted}` map; the runner's parallelism or
+  sharding; one build shared by the commands that follow it instead of a
+  rebuild in each; a system started once per run, not per test.
+
+Time each command with `reliab verify --only <command> --tier nightly`
+before and after, and put both times in the report.
+
+## 7. Wire tiers within budget
 
 - Every command that writes a result file has `format` and `output`, and
   outputs live under `.reliab/out/`.
@@ -270,7 +309,7 @@ role's `notes`, and the failed claim goes in `corrections`:
     from inside test code (an auto-accept or auto-verify setting).
   Check each pattern against the tool's real command line.
 
-## 7. The gate
+## 8. The gate
 
 ```sh
 reliab profile validate
@@ -300,10 +339,11 @@ Give the person:
 
 1. **Profile**: starting condition, paths, protected oracles and who
    approves them, and the files you wrote or changed.
-2. **Roles**: a table of T1 to T14: filled (tool, version, the probe and its
+2. **Roles**: a table of T1 to T15: filled (tool, version, the probe and its
    finding), not applicable (reason), or corrected (what failed).
-3. **Timings**: each command's time, the inner and prepr tiers' totals
-   against their budgets, and what moved between tiers and why.
+3. **Timings**: each command's time, before and after the speed options you
+   kept, the inner and prepr tiers' totals against their budgets, and what
+   moved between tiers and why.
 4. **The suite**: test projects and counts, runs made, tests failing in
    every run, flaky tests (failed N of M), each with its classification.
    Nothing was quarantined.

@@ -2,6 +2,7 @@ package profile
 
 import (
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -17,8 +18,19 @@ func TestShippedProfilesLoad(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(p.Roles) != 14 {
-				t.Errorf("roles = %d, want 14", len(p.Roles))
+			// Every paper role T1-T14 is filled or marked; T15
+			// (knowledge/roles/t15-fuzzing.md) is optional.
+			for i := 1; i <= 14; i++ {
+				if _, ok := p.Roles["T"+strconv.Itoa(i)]; !ok {
+					t.Errorf("no role T%d", i)
+				}
+			}
+			want := 14
+			if _, ok := p.Roles["T15"]; ok {
+				want = 15
+			}
+			if len(p.Roles) != want {
+				t.Errorf("roles = %d, want T1-T14 and optionally T15", len(p.Roles))
 			}
 		})
 	}

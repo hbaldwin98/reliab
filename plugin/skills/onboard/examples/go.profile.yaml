@@ -16,7 +16,7 @@ paths:
 
 # Golden files and the saved regression inputs are oracles; the OpenAPI
 # spec is hand-maintained. The profile guards itself once committed.
-protected_paths: ["reliability-profile.yaml", "**/testdata/golden/**", "**/testdata/rapid/**", "api/openapi.yaml", "reliab/mutation-baseline.json"]
+protected_paths: ["reliability-profile.yaml", "**/testdata/golden/**", "**/testdata/rapid/**", "**/testdata/fuzz/**", "api/openapi.yaml", "reliab/mutation-baseline.json"]
 
 # The mutation baseline: scores per area that changed code must not fall
 # below (baseline first, then hold the line). A person records it from a
@@ -44,6 +44,7 @@ roles:
   T12: { tool: go test -coverprofile with gocover-cobertura, version: v1.3.0, verified: 2026-10-18 }
   T13: { applicable: false, reason: "no read path slated for rewrite" }
   T14: { tool: golangci-lint, version: v2.15.0, verified: 2026-10-18, notes: "its JSON through reliab-adapter-golangci-lint, so each issue is its own finding" }
+  T15: { tool: go test -fuzz, version: go1.27, verified: 2026-10-18, notes: "one target per run, so scripts/reliab/fuzz.sh splits {fuzz_seconds} among the Fuzz functions; crashers land in testdata/fuzz, which unit replays" }
 
 commands:
   build: go build ./...
@@ -79,8 +80,24 @@ commands:
     output: .reliab/out/api-fuzz.xml
     # The whole service answers the fuzz; the client and docs do not.
     relevant_when: ["cmd/**", "internal/**", "api/**", "go.mod", "go.sum"]
+  # Native fuzz targets in the request decoder and the client's response
+  # parser, for the tier's time box; GOCACHE keeps each target's corpus
+  # between runs.
+  fuzz:
+    run: sh scripts/reliab/fuzz.sh {fuzz_seconds} .reliab/out/fuzz.xml
+    format: junit
+    output: .reliab/out/fuzz.xml
+    relevant_when: ["internal/orders/decode/**", "client/**", "go.mod", "go.sum"]
+  # The service and PostgreSQL in containers, driven through the client
+  # package's tests tagged e2e.
+  e2e:
+    run: sh scripts/reliab/e2e.sh .reliab/out/e2e.xml
+    format: junit
+    output: .reliab/out/e2e.xml
+    relevant_when: ["cmd/**", "internal/**", "client/**", "deploy/**", "go.mod", "go.sum"]
   # gremlins per changed package, then reliab-adapter-gremlins -base keeps
-  # the mutants on lines changed since the base.
+  # the mutants on lines changed since the base. Two workers: with one per
+  # CPU, tests time out under load and mutants read as killed.
   mutation_changed:
     run: sh scripts/reliab/mutation.sh changed {base}
     format: findings
@@ -105,7 +122,7 @@ impacted:
 
 tiers:
   inner: { budget_seconds: 300, property_cases: 100 }
-  prepr: { budget_seconds: 900, property_cases: 1000 }
+  prepr: { budget_seconds: 900, property_cases: 1000, fuzz_seconds: 60 }
 
 corrections:
   - tool: golangci-lint v2.15.0

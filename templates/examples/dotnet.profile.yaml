@@ -63,6 +63,7 @@ roles:
   T12: { tool: AltCover, version: 9.0.145, verified: 2026-10-18, notes: "scripts/reliab/coverage.sh rebuilds, then instruments a copy of the test binaries without Stryker's *.stryker-unchanged backups; writes Cobertura" }
   T13: { applicable: false, reason: "no read path is being rewritten yet; revisit when the net472 library moves" }
   T14: { tool: .NET analyzers with warnings as errors, verified: 2026-10-18 }
+  T15: { applicable: false, reason: "no code parses untrusted bytes: ASP.NET Core binds requests, which T7 fuzzes from the spec" }
 
 # dotnet test on the solution writes one TRX per test project (a fixed
 # LogFileName would overwrite them; see corrections), so each command sets

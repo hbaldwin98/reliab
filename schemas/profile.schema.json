@@ -57,14 +57,14 @@
     "roles": {
       "type": "object",
       "additionalProperties": false,
-      "description": "One entry per tool role T1-T14: a filling, or applicable: false with a reason.",
+      "description": "One entry per tool role T1-T14: a filling, or applicable: false with a reason. T15 (coverage-guided fuzzing) is reliab's own and optional.",
       "required": ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "T9", "T10", "T11", "T12", "T13", "T14"],
-      "patternProperties": { "^T([1-9]|1[0-4])$": { "$ref": "#/$defs/role" } }
+      "patternProperties": { "^T([1-9]|1[0-5])$": { "$ref": "#/$defs/role" } }
     },
     "commands": {
       "type": "object",
       "additionalProperties": false,
-      "description": "What verify runs. The only place a tool is named. Placeholders: {impacted}, {cases}, {seed}, {scope}, {base}, and {capture} (characterize only: the directory to write transcripts into).",
+      "description": "What verify runs. The only place a tool is named. Placeholders: {impacted}, {cases}, {seed}, {fuzz_seconds}, {scope}, {base}, and {capture} (characterize only: the directory to write transcripts into).",
       "propertyNames": { "$ref": "#/$defs/commandId" },
       "patternProperties": { "": { "$ref": "#/$defs/command" } }
     },
@@ -167,7 +167,7 @@
     "commandId": {
       "enum": [
         "build", "analyzers", "corpus", "unit", "integration_tests", "snapshots", "properties", "spec_checks",
-        "model_tests", "api_fuzz", "mutation_changed", "mutation_full", "faults_db",
+        "model_tests", "api_fuzz", "fuzz", "e2e", "mutation_changed", "mutation_full", "faults_db",
         "faults_http", "store_tests", "replay_sampled", "replay_full", "coverage",
         "characterize"
       ]
@@ -203,6 +203,7 @@
       "properties": {
         "budget_seconds": { "type": "integer", "minimum": 0, "description": "0 means no budget." },
         "property_cases": { "type": "integer", "minimum": 1 },
+        "fuzz_seconds": { "type": "integer", "minimum": 0, "description": "Seconds the fuzz command may explore, passed as {fuzz_seconds} and RELIAB_FUZZ_SECONDS. 0 replays the saved corpus only." },
         "run": {
           "type": "array",
           "items": { "$ref": "#/$defs/commandId" },

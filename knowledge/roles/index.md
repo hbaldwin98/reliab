@@ -6,6 +6,7 @@
 * [T12: Coverage](t12-coverage.md) - Changed-lines coverage as a backstop; machine-readable output.
 * [T13: Shadow experiments](t13-shadow-experiments.md) - Run old and new implementations side by side on production reads.
 * [T14: Static analysis](t14-static-analysis.md) - Warnings as errors on new and changed files; bug and style rules.
+* [T15: Coverage-guided fuzzing](t15-fuzzing.md) - Mutate inputs to code that parses or decodes, guided by coverage, within a time box; save each crashing input as a reproducer. reliab's own role, optional.
 * [T2: Property-based testing](t2-property-testing.md) - Generators per input type, shrinking, seed replay, callable from T1.
 * [T3: Snapshot / approval testing](t3-snapshot.md) - Serialize a response, diff against a committed file, pluggable scrubbers.
 * [T4: Mutation testing](t4-mutation.md) - Mutate changed lines only; report survivors per line; threshold gate.
