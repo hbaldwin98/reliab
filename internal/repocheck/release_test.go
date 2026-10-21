@@ -74,10 +74,10 @@ func TestReleaseArchivesHoldEverything(t *testing.T) {
 
 // The README's install lines name the released version, the one in
 // plugin.json, so a reader installs the binary the plugin launcher would
-// (README "Install", "Release"). The release order tags the version bump
-// first and updates the README once the release is out, so while plugin.json
-// differs from HEAD's parent (or the parent is not in a shallow clone) the
-// README may still name the previous version.
+// (README "Install", "Release"; knowledge/decisions/own-ci-checks.md). The
+// release order tags the version bump first and updates the README once the
+// release is out, so while plugin.json differs from HEAD's parent (or the
+// parent is not in a shallow clone) the README may name another version.
 func TestReadmeInstallsPluginVersion(t *testing.T) {
 	var p struct{ Version string }
 	readJSON(t, "plugin/.claude-plugin/plugin.json", &p)
