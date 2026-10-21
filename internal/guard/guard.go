@@ -29,6 +29,7 @@ import (
 type Repo struct {
 	Root    string
 	Profile *profile.Profile
+	edits   *profile.EditSet
 }
 
 // Open finds the repository containing dir and loads its profile. ok is
@@ -50,11 +51,12 @@ func Open(dir string) (repo *Repo, ok bool, err error) {
 	return &Repo{Root: root, Profile: p}, true, nil
 }
 
-// alwaysProtected are reliab's own artifacts: only the binary writes them.
-var alwaysProtected = []string{".reliab/**"}
-
-func (r *Repo) protected() []string {
-	return append(append([]string{}, alwaysProtected...), r.Profile.ProtectedPaths...)
+// editSet is what no agent edits here (profile.EditSet), made once.
+func (r *Repo) editSet() *profile.EditSet {
+	if r.edits == nil {
+		r.edits = profile.NewEditSet(r.Root, r.Profile)
+	}
+	return r.edits
 }
 
 // rels turns a path from a tool call into the repo-relative slash paths it
@@ -162,10 +164,10 @@ func match(glob, rel string) bool {
 // the profile being onboarded is the agent's to write
 // (knowledge/decisions/protected-path-approval.md).
 func (r *Repo) isProtected(rel string) (string, bool) {
-	if rel == profile.DefaultPath && gitx.BlobAt(r.Root, "HEAD", rel) == "" {
+	if r.editSet().Exempt(rel) {
 		return "", false
 	}
-	for _, g := range r.protected() {
+	for _, g := range r.editSet().Globs() {
 		if match(g, rel) || match(g, strings.TrimSuffix(rel, "/")+"/x") {
 			return g, true
 		}
@@ -190,7 +192,7 @@ func (r *Repo) holdsProtected(files []string, rel string) (string, bool) {
 		if caseless && !strings.HasPrefix(strings.ToLower(f), strings.ToLower(prefix)) || !caseless && !strings.HasPrefix(f, prefix) {
 			continue
 		}
-		for _, g := range r.protected() {
+		for _, g := range r.editSet().Globs() {
 			if match(g, f) {
 				return g, true
 			}
