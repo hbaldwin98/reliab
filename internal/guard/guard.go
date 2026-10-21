@@ -731,7 +731,7 @@ func (r *Repo) SessionStart(in hookio.Input) hookio.Decision {
 		if f.Status == report.StatusOpen {
 			subject := f.Test
 			if subject == "" {
-				subject = f.Command
+				subject = "command " + f.Command
 			}
 			fmt.Fprintf(&b, "- open %s [%s] %s\n", f.ID, f.Kind, subject)
 		}
