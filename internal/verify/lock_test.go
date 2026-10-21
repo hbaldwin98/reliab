@@ -163,7 +163,7 @@ func TestLockRecordsWhenItWasTakenNotWhenTheWaitBegan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	h, known := readHolder(f)
 	if want := taken.Format(time.RFC3339); !known || h.StartedAt != want {
 		t.Errorf("holder = %+v (known %v), want startedAt %s, when the lock was taken", h, known, want)
