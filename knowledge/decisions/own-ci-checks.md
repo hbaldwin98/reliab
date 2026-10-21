@@ -64,10 +64,14 @@ or that the public repository stays free of private names
   bump commit when the release starts. Waiting for a ci run on the tag would
   need main pushed first, which the order forbids.
 - The README's install lines name plugin.json's version
-  (`internal/repocheck`), except while plugin.json differs from HEAD's
-  parent: the bump commit itself, before the README follows. The ci test job
-  fetches two commits so the parent is there; a shallower clone cannot tell
-  and allows it.
+  (`internal/repocheck`), or the version plugin.json held before the last
+  commit that changed it: the README follows the release, and commits may land
+  between the bump and the README update. The answer depends only on
+  plugin.json, the README, and plugin.json's history, so commits that leave
+  plugin.json alone neither change it nor stale go test's cache, which keys on
+  the two files. A README two versions behind fails at the next bump. The ci
+  test job fetches the whole history; a shallow clone that cannot tell allows
+  it.
 
 ## Consequences
 

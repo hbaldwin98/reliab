@@ -2,9 +2,12 @@ package repocheck
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -74,44 +77,148 @@ func TestReleaseArchivesHoldEverything(t *testing.T) {
 
 // The README's install lines name the released version, the one in
 // plugin.json, so a reader installs the binary the plugin launcher would
-// (README "Install", "Release"; knowledge/decisions/own-ci-checks.md). The
-// release order tags the version bump first and updates the README once the
-// release is out, so while plugin.json differs from HEAD's parent (or the
-// parent is not in a shallow clone) the README may name another version.
+// (README "Install", "Release"; knowledge/decisions/own-ci-checks.md).
 func TestReadmeInstallsPluginVersion(t *testing.T) {
+	errs, logs := readmeInstallProblems(root)
+	for _, l := range logs {
+		t.Log(l)
+	}
+	for _, e := range errs {
+		t.Error(e)
+	}
+}
+
+// readmeInstallProblems returns what is wrong with dir's README install lines,
+// and notes on what it allowed.
+func readmeInstallProblems(dir string) (errs, logs []string) {
 	var p struct{ Version string }
-	readJSON(t, "plugin/.claude-plugin/plugin.json", &p)
-	raw, err := os.ReadFile(filepath.Join(root, "README.md"))
+	raw, err := os.ReadFile(filepath.Join(dir, "plugin/.claude-plugin/plugin.json"))
+	if err == nil {
+		err = json.Unmarshal(raw, &p)
+	}
 	if err != nil {
-		t.Fatal(err)
+		return []string{err.Error()}, nil
+	}
+	readme, err := os.ReadFile(filepath.Join(dir, "README.md"))
+	if err != nil {
+		return []string{err.Error()}, nil
 	}
 	lines := map[string]*regexp.Regexp{
 		"install.sh":  regexp.MustCompile(`scripts/install\.sh \| sh -s -- (\S+)`),
 		"install.ps1": regexp.MustCompile(`scripts/install\.ps1\)\)\) -Version (\S+)`),
 	}
+	var previous string
+	var previousErr error
+	looked := false
 	for name, re := range lines {
-		m := re.FindAllStringSubmatch(string(raw), -1)
+		m := re.FindAllStringSubmatch(string(readme), -1)
 		if len(m) == 0 {
-			t.Errorf("README has no %s install line", name)
+			errs = append(errs, fmt.Sprintf("README has no %s install line", name))
 			continue
 		}
 		for _, v := range m {
 			if v[1] == p.Version {
 				continue
 			}
-			bumping := exec.Command("git", "diff", "--quiet", "HEAD~1", "--", "plugin/.claude-plugin/plugin.json")
-			bumping.Dir = root
-			if err := bumping.Run(); err != nil {
-				if exit, ok := err.(*exec.ExitError); ok && exit.ExitCode() == 1 {
-					t.Logf("README %s installs %s while plugin.json moves to %s", name, v[1], p.Version)
-					continue
-				}
-				t.Logf("cannot tell whether plugin.json changed since HEAD~1 (%v); allowing README %s %s", err, name, v[1])
-				continue
+			if !looked {
+				previous, previousErr = previousPluginVersion(dir)
+				looked = true
 			}
-			t.Errorf("README %s installs %s, plugin.json is %s", name, v[1], p.Version)
+			switch {
+			case previousErr != nil:
+				logs = append(logs, fmt.Sprintf("cannot tell plugin.json's previous version (%v); allowing README %s %s", previousErr, name, v[1]))
+			case v[1] == previous:
+				logs = append(logs, fmt.Sprintf("README %s installs %s while plugin.json moves to %s", name, v[1], p.Version))
+			default:
+				errs = append(errs, fmt.Sprintf("README %s installs %s, plugin.json is %s (and was %s)", name, v[1], p.Version, previous))
+			}
 		}
 	}
+	return errs, logs
+}
+
+// previousPluginVersion returns plugin.json's version before the last commit
+// that changed it. Only that commit's history decides it, so the answer holds
+// across commits that leave plugin.json alone.
+func previousPluginVersion(dir string) (string, error) {
+	const path = "plugin/.claude-plugin/plugin.json"
+	last := exec.Command("git", "log", "-n1", "--format=%H", "--", path)
+	last.Dir = dir
+	sha, err := last.Output()
+	if err != nil || len(bytes.TrimSpace(sha)) == 0 {
+		return "", fmt.Errorf("no commit changes %s: %v", path, err)
+	}
+	show := exec.Command("git", "show", strings.TrimSpace(string(sha))+"^:"+path)
+	show.Dir = dir
+	raw, err := show.Output()
+	if err != nil {
+		return "", fmt.Errorf("%s before %s: %v", path, strings.TrimSpace(string(sha)), err)
+	}
+	var p struct{ Version string }
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return "", err
+	}
+	return p.Version, nil
+}
+
+// The README may name the previous version from the version bump until the
+// release is out and the README follows (README "Release", the release order),
+// however many commits land between them, and no later: a commit that does
+// not touch plugin.json changes neither the answer nor what go test's cache
+// keys it on (reviewer finding on own-ci-checks.md).
+func TestReadmeInstallsPreviousVersionWhileReleasing(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git")
+	}
+	dir := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false"}, args...)...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	write := func(path, body string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, path)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, path), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	readmeAt := func(v string) {
+		t.Helper()
+		write("README.md", "curl -fsSL https://x/main/scripts/install.sh | sh -s -- "+v+"\n"+
+			"& ([scriptblock]::Create((irm https://x/main/scripts/install.ps1))) -Version "+v+"\n")
+	}
+	release := func(plugin, readme string) {
+		t.Helper()
+		write("plugin/.claude-plugin/plugin.json", `{"version":"`+plugin+`"}`)
+		readmeAt(readme)
+		git("add", "-A")
+		git("commit", "-q", "-m", "release "+plugin)
+	}
+	check := func(want bool) {
+		t.Helper()
+		errs, _ := readmeInstallProblems(dir)
+		if (len(errs) == 0) != want {
+			t.Fatalf("passes = %v, want %v; errs = %v", len(errs) == 0, want, errs)
+		}
+	}
+	git("init", "-q")
+	release("0.1.4", "0.1.4")
+	release("0.1.5", "0.1.5")
+	check(true)
+	release("0.1.6", "0.1.5") // the bump; the README follows the release
+	check(true)
+	write("notes.md", "a fix while the release builds")
+	git("add", "-A")
+	git("commit", "-q", "-m", "unrelated")
+	check(true)
+	readmeAt("0.1.4")
+	check(false) // two versions behind
 }
 
 // writeRelease writes a release asset for this machine holding a fresh

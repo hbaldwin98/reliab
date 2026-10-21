@@ -40,8 +40,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # The README version test needs HEAD's parent.
-          fetch-depth: 2
+          # The README version test reads plugin.json's history.
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
