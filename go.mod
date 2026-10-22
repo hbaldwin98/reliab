@@ -6,6 +6,7 @@ toolchain go1.27.2
 
 require (
 	github.com/bmatcuk/doublestar/v4 v4.10.3
+	github.com/google/go-dap v0.12.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/spf13/cobra v1.10.2
 	go.yaml.in/yaml/v3 v3.0.5

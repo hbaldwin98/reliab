@@ -26,6 +26,7 @@ import (
 	"github.com/hbaldwin98/reliab/internal/carry"
 	"github.com/hbaldwin98/reliab/internal/gitx"
 	"github.com/hbaldwin98/reliab/internal/mutscore"
+	"github.com/hbaldwin98/reliab/internal/proctree"
 	"github.com/hbaldwin98/reliab/internal/profile"
 	"github.com/hbaldwin98/reliab/internal/report"
 	"github.com/hbaldwin98/reliab/internal/version"
@@ -397,7 +398,7 @@ func runCommand(ctx context.Context, opt Options, shell string, env []string, ti
 	cmd.Env = append(env, "RELIAB_COMMAND_START="+started.UTC().Format(time.RFC3339Nano))
 	cmd.Stdout, cmd.Stderr = logFile, logFile
 	cmd.WaitDelay = 5 * time.Second
-	afterStart, cleanup := killTree(cmd)
+	afterStart, cleanup := proctree.Track(cmd)
 	runErr := cmd.Start()
 	if runErr == nil {
 		if err := afterStart(); err != nil {
