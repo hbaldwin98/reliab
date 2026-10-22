@@ -108,6 +108,28 @@
         "file": { "type": "string", "minLength": 1 }
       }
     },
+    "debug": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adapter"],
+      "description": "The language's debug adapter for reliab debug run, attach, and probe (knowledge/decisions/debug-adapter-seam.md). Placeholders in every string value: {port}, {cwd}, {root}, {pid}, and names given with --set.",
+      "properties": {
+        "adapter": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["run", "transport"],
+          "properties": {
+            "run": { "type": "string", "minLength": 1, "description": "The adapter's command line; its first word is looked up on PATH. Quotes group words; a backslash is literal." },
+            "transport": { "enum": ["stdio", "tcp"], "description": "stdio: DAP on the adapter's stdin and stdout. tcp: the adapter listens on 127.0.0.1:{port}." },
+            "ready": { "type": "string", "minLength": 1, "description": "tcp only: a regular expression on the adapter's output that means it listens. Without it reliab retries the connection for 5 seconds." }
+          }
+        },
+        "launch": { "type": "object", "description": "The DAP launch request's arguments, passed verbatim after expansion." },
+        "attach": { "type": "object", "description": "The DAP attach request's arguments, passed verbatim after expansion." },
+        "source_root": { "type": "string", "minLength": 1, "description": "Where adapter paths are made repo-relative from; default the repository root." },
+        "notes": { "type": "string" }
+      }
+    },
     "require_reviewer_verdict": { "type": "boolean", "default": false },
     "corrections": {
       "type": "array",

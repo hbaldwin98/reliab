@@ -39,6 +39,7 @@ type Profile struct {
 	Impacted               *Impacted          `json:"impacted,omitempty"`
 	Tiers                  map[string]Tier    `json:"tiers,omitempty"`
 	HostAdapter            *HostAdapter       `json:"host_adapter,omitempty"`
+	Debug                  *Debug             `json:"debug,omitempty"`
 	RequireReviewerVerdict bool               `json:"require_reviewer_verdict,omitempty"`
 	Corrections            []Correction       `json:"corrections,omitempty"`
 }
@@ -141,6 +142,24 @@ type HostAdapter struct {
 	File  string `json:"file"`
 }
 
+// Debug names the language's debug adapter and the arguments of its launch
+// and attach requests (knowledge/decisions/debug-adapter-seam.md). reliab
+// never interprets a launch or attach key.
+type Debug struct {
+	Adapter    DebugAdapter   `json:"adapter"`
+	Launch     map[string]any `json:"launch,omitempty"`
+	Attach     map[string]any `json:"attach,omitempty"`
+	SourceRoot string         `json:"source_root,omitempty"`
+	Notes      string         `json:"notes,omitempty"`
+}
+
+// DebugAdapter is how to start the adapter.
+type DebugAdapter struct {
+	Run       string `json:"run"`
+	Transport string `json:"transport"`
+	Ready     string `json:"ready,omitempty"`
+}
+
 type Correction struct {
 	Tool     string `json:"tool"`
 	Claimed  string `json:"claimed"`
@@ -220,7 +239,30 @@ func Parse(raw []byte) (*Profile, error) {
 			return nil, fmt.Errorf("protected_edits[%d]: %w", i, err)
 		}
 	}
+	if err := checkDebug(p.Debug); err != nil {
+		return nil, err
+	}
 	return &p, nil
+}
+
+// checkDebug holds the debug section to what its transport needs.
+func checkDebug(d *Debug) error {
+	if d == nil {
+		return nil
+	}
+	a := d.Adapter
+	if a.Ready != "" {
+		if a.Transport != "tcp" {
+			return fmt.Errorf("debug.adapter.ready: only a tcp adapter is waited for")
+		}
+		if _, err := regexp.Compile(a.Ready); err != nil {
+			return fmt.Errorf("debug.adapter.ready: %w", err)
+		}
+	}
+	if a.Transport == "tcp" && !strings.Contains(a.Run, "{port}") {
+		return fmt.Errorf("debug.adapter.run must name {port} with transport tcp: reliab picks the port")
+	}
+	return nil
 }
 
 func matchAny(globs []string, path string) bool {

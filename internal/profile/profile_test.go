@@ -185,3 +185,72 @@ func TestIsMutation(t *testing.T) {
 		}
 	}
 }
+
+// knowledge/decisions/debug-adapter-seam.md: an optional debug section
+// names the adapter; launch and attach are free-form maps passed through
+// as the request's arguments, at any depth.
+const debugBlock = `
+debug:
+  adapter:
+    run: dlv dap --listen=127.0.0.1:{port}
+    transport: tcp
+    ready: "DAP server listening"
+  launch:
+    mode: test
+    program: "{program}"
+    args: ["-test.run", "^{test}$"]
+    env: { GOFLAGS: "-count=1", nested: { deeper: [1, true] } }
+  attach: { mode: local, processId: "{pid}" }
+  source_root: .
+  notes: dlv needs -gcflags=all=-N -l for full locals
+`
+
+func TestParseDebug(t *testing.T) {
+	p, err := Parse([]byte(minimal + debugBlock))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := p.Debug
+	if d == nil || d.Adapter.Run != "dlv dap --listen=127.0.0.1:{port}" || d.Adapter.Transport != "tcp" || d.Adapter.Ready != "DAP server listening" {
+		t.Fatalf("debug = %+v", d)
+	}
+	if d.Launch["program"] != "{program}" || d.Attach["processId"] != "{pid}" || d.SourceRoot != "." || d.Notes == "" {
+		t.Errorf("launch %v attach %v source_root %q", d.Launch, d.Attach, d.SourceRoot)
+	}
+	env, _ := d.Launch["env"].(map[string]any)
+	nested, _ := env["nested"].(map[string]any)
+	if deeper, _ := nested["deeper"].([]any); len(deeper) != 2 || deeper[1] != true {
+		t.Errorf("nested launch values = %v", d.Launch["env"])
+	}
+	if q, err := Parse([]byte(minimal)); err != nil || q.Debug != nil {
+		t.Errorf("a profile without debug: %+v, %v", q.Debug, err)
+	}
+	stdio := strings.NewReplacer("dlv dap --listen=127.0.0.1:{port}", "netcoredbg --interpreter=vscode", "transport: tcp", "transport: stdio", `    ready: "DAP server listening"`+"\n", "").Replace(debugBlock)
+	if _, err := Parse([]byte(minimal + stdio)); err != nil {
+		t.Errorf("stdio adapter: %v", err)
+	}
+}
+
+func TestParseDebugRejections(t *testing.T) {
+	tests := []struct{ name, find, replace, want string }{
+		{"unknown transport", "transport: tcp", "transport: pipe", "transport"},
+		{"no run", "    run: dlv dap --listen=127.0.0.1:{port}\n", "", "run"},
+		{"unknown key", "  notes:", "  flavour: x\n  notes:", "additional properties"},
+		{"launch not a map", "  attach: { mode: local, processId: \"{pid}\" }", "  attach: [local]", "attach"},
+		{"bad ready regex", `ready: "DAP server listening"`, `ready: "DAP ("`, "debug.adapter.ready"},
+		{"ready on stdio", "transport: tcp", "transport: stdio", "only a tcp adapter"},
+		{"tcp without port", "--listen=127.0.0.1:{port}", "--listen=127.0.0.1:4711", "must name {port}"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			src := strings.Replace(minimal+debugBlock, tt.find, tt.replace, 1)
+			if src == minimal+debugBlock {
+				t.Fatalf("test setup: %q not found", tt.find)
+			}
+			_, err := Parse([]byte(src))
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("err = %v, want one mentioning %q", err, tt.want)
+			}
+		})
+	}
+}
