@@ -121,6 +121,22 @@ func TestCapabilitiesEventIsApplied(t *testing.T) {
 	}
 }
 
+// DAP CapabilitiesEvent: only changed values need be included, so an
+// event without exception filters keeps the ones initialize gave.
+func TestCapabilitiesEventKeepsFilters(t *testing.T) {
+	sc := basicScript()
+	sc.CapabilitiesEvent = &godap.Capabilities{SupportsTerminateRequest: true}
+	opt := baseOptions()
+	opt.Catch = true
+	tr, _, err := runFake(t, context.Background(), sc, opt, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(tr.ExceptionFilters, ",") != "panic" {
+		t.Errorf("filters = %v, warnings %q", tr.ExceptionFilters, tr.Warnings)
+	}
+}
+
 // A stop with no frames records no locals and still evaluates the dumps.
 func TestStopWithoutFrames(t *testing.T) {
 	sc := basicScript()

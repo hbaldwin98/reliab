@@ -307,7 +307,7 @@ func newDebugSessionCmd(mode string) *cobra.Command {
 			if err != nil {
 				return adapterFailure(cmd, err, output)
 			}
-			tr.DurationSec = float64(time.Since(started).Milliseconds()/100) / 10
+			tr.DurationSec = float64(time.Since(started).Milliseconds()) / 1000
 			path, err := dap.Write(env.root, tr, started)
 			if err != nil {
 				return withCode(ExitConfig, err)

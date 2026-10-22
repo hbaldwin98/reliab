@@ -333,7 +333,9 @@ func TestDebugRunJSONExitAndDuration(t *testing.T) {
 	if code != ExitFindings || tr.ExitCode != ExitFindings {
 		t.Errorf("--json exit %d, transcript %d", code, tr.ExitCode)
 	}
-	if tr.DurationSec <= 0 && elapsed > 0.2 || tr.DurationSec > elapsed+0.1 {
+	// Starting the adapter alone takes milliseconds, and the session is
+	// part of the command.
+	if tr.DurationSec < 0.001 || tr.DurationSec > elapsed {
 		t.Errorf("durationSec %.1f, the command took %.2fs", tr.DurationSec, elapsed)
 	}
 
