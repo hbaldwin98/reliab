@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hbaldwin98/reliab/schemas/debug-transcript.schema.json",
+  "title": "reliab debug transcript",
+  "description": "One reliab debug run or attach, written to .reliab/debug/<yyyymmdd-hhmmss>.json and .reliab/debug/last.json. See knowledge/decisions/debug-adapter-seam.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "mode", "startedAt", "durationSec", "adapter", "request", "breakpoints", "exceptionFilters", "entries", "end", "truncated", "exitCode"],
+  "properties": {
+    "schemaVersion": { "type": "string", "pattern": "^1\\.[0-9]+\\.[0-9]+$" },
+    "mode": { "enum": ["run", "attach"] },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "durationSec": { "type": "number", "minimum": 0 },
+    "adapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run", "transport"],
+      "properties": {
+        "run": { "type": "string", "minLength": 1, "description": "The adapter's command line after expansion." },
+        "transport": { "enum": ["stdio", "tcp"] },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "arguments"],
+      "properties": {
+        "command": { "enum": ["launch", "attach"] },
+        "arguments": { "type": "object", "description": "The profile's launch or attach block after expansion, as sent." }
+      }
+    },
+    "breakpoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["spec", "path", "line", "verified"],
+        "properties": {
+          "spec": { "type": "string", "description": "The --break as given." },
+          "path": { "$ref": "#/$defs/path" },
+          "line": { "type": "integer", "minimum": 1 },
+          "condition": { "type": "string" },
+          "verified": { "type": "boolean" },
+          "actualLine": { "type": "integer", "minimum": 1 },
+          "message": { "type": "string" }
+        }
+      }
+    },
+    "exceptionFilters": { "type": "array", "items": { "type": "string" } },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "entries": {
+      "type": "array",
+      "description": "Stops and program output, in arrival order.",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "seq", "reason", "thread"],
+            "properties": {
+              "kind": { "const": "stop" },
+              "seq": { "type": "integer", "minimum": 1 },
+              "reason": { "type": "string" },
+              "description": { "type": "string" },
+              "thread": { "type": "integer" },
+              "frames": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["line", "function"],
+                  "properties": {
+                    "path": { "$ref": "#/$defs/path" },
+                    "line": { "type": "integer", "minimum": 0 },
+                    "function": { "type": "string" }
+                  }
+                }
+              },
+              "locals": { "type": "array", "items": { "$ref": "#/$defs/variable" } },
+              "dumps": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["expression"],
+                  "properties": {
+                    "expression": { "type": "string" },
+                    "value": { "type": "string" },
+                    "type": { "type": "string" },
+                    "error": { "type": "string", "description": "Why the expression did not evaluate; never fatal to the run." }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "category", "text"],
+            "properties": {
+              "kind": { "const": "output" },
+              "category": { "type": "string" },
+              "text": { "type": "string" }
+            }
+          }
+        ]
+      }
+    },
+    "reverseRequests": {
+      "type": "array",
+      "description": "Requests the adapter sent that reliab declined (runInTerminal, startDebugging).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["command", "seq"],
+        "properties": {
+          "command": { "type": "string" },
+          "seq": { "type": "integer" }
+        }
+      }
+    },
+    "ignored": {
+      "type": "object",
+      "description": "Messages reliab did not handle, counted by \"event <name>\", \"request <command>\", or \"response <command>\".",
+      "additionalProperties": { "type": "integer", "minimum": 1 }
+    },
+    "end": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason"],
+      "properties": {
+        "reason": { "enum": ["exited", "terminated", "max-stops", "timeout", "budget", "adapter-error", "adapter-gone"] },
+        "exitCode": { "type": "integer", "description": "The program's exit code, when it exited." },
+        "message": { "type": "string" }
+      }
+    },
+    "truncated": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stops", "variables", "values", "outputBytes"],
+      "properties": {
+        "stops": { "type": "boolean", "description": "--max-stops ended the run." },
+        "variables": { "type": "integer", "minimum": 0, "description": "Variables not expanded: past --depth or past the per-scope cap." },
+        "values": { "type": "integer", "minimum": 0, "description": "Values cut at the value cap." },
+        "outputBytes": { "type": "integer", "minimum": 0, "description": "Bytes of program output dropped past the output cap." }
+      }
+    },
+    "exitCode": { "enum": [0, 1, 3], "description": "reliab's exit code: 0 ran to its end, 1 an exception stop or a limit ended it, 3 the overall budget passed." }
+  },
+  "$defs": {
+    "path": { "type": "string", "description": "Repo-relative with slashes when the file is in the repository; otherwise absolute with slashes." },
+    "variable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "value"],
+      "properties": {
+        "name": { "type": "string" },
+        "value": { "type": "string" },
+        "type": { "type": "string" },
+        "scope": { "type": "string" },
+        "children": { "type": "array", "items": { "$ref": "#/$defs/variable" } }
+      }
+    }
+  }
+}

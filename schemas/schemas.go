@@ -23,6 +23,8 @@ const (
 	ReportMajor   = 0
 	FindingsMajor = 0
 	BaselineMajor = 0
+	// DebugTranscriptMajor starts at 1 (knowledge/decisions/debug-adapter-seam.md).
+	DebugTranscriptMajor = 1
 )
 
 // Kind names a schema.
@@ -33,6 +35,8 @@ const (
 	Report   Kind = "report"
 	Findings Kind = "findings"
 	Baseline Kind = "baseline"
+	// DebugTranscript is a reliab debug run or attach transcript.
+	DebugTranscript Kind = "debug-transcript"
 )
 
 const baseURL = "https://github.com/hbaldwin98/reliab/schemas/"
@@ -40,7 +44,7 @@ const baseURL = "https://github.com/hbaldwin98/reliab/schemas/"
 var compiled = sync.OnceValues(func() (map[Kind]*jsonschema.Schema, error) {
 	c := jsonschema.NewCompiler()
 	c.AssertFormat()
-	for _, name := range []string{"profile.schema.json", "report.schema.json", "findings.schema.json", "baseline.schema.json"} {
+	for _, name := range []string{"profile.schema.json", "report.schema.json", "findings.schema.json", "baseline.schema.json", "debug-transcript.schema.json"} {
 		raw, err := files.ReadFile(name)
 		if err != nil {
 			return nil, err
@@ -54,7 +58,7 @@ var compiled = sync.OnceValues(func() (map[Kind]*jsonschema.Schema, error) {
 		}
 	}
 	out := map[Kind]*jsonschema.Schema{}
-	for _, k := range []Kind{Profile, Report, Findings, Baseline} {
+	for _, k := range []Kind{Profile, Report, Findings, Baseline, DebugTranscript} {
 		s, err := c.Compile(baseURL + string(k) + ".schema.json")
 		if err != nil {
 			return nil, err
@@ -86,7 +90,7 @@ func checkMajor(kind Kind, doc any) error {
 	if err != nil {
 		return fmt.Errorf("schemaVersion %q is not semver", v)
 	}
-	want := map[Kind]int{Profile: ProfileMajor, Report: ReportMajor, Findings: FindingsMajor, Baseline: BaselineMajor}[kind]
+	want := map[Kind]int{Profile: ProfileMajor, Report: ReportMajor, Findings: FindingsMajor, Baseline: BaselineMajor, DebugTranscript: DebugTranscriptMajor}[kind]
 	if n != want {
 		return fmt.Errorf("%s schemaVersion %s: this reliab supports major version %d", kind, v, want)
 	}
