@@ -203,7 +203,7 @@ func sampleTranscript() *Transcript {
 			{Kind: KindOutput, Category: "stdout", Text: "=== RUN   TestX\nline two\n"},
 			{Kind: KindStop, Seq: 1, Reason: "breakpoint", Thread: 1,
 				Frames: []Frame{{Path: "pkg/x.go", Line: 12, Function: "pkg.Sum"}, {Path: "pkg/x_test.go", Line: 30, Function: "pkg.TestX"}},
-				Locals: []Variable{{Name: "n", Value: "3", Scope: "Locals"}, {Name: "s", Value: strings.Repeat("y", 30), Children: []Variable{{Name: "[0]", Value: "a\nb"}}}},
+				Locals: []Variable{{Name: "n", Value: "3", Scope: "Locals"}, {Name: "s", Value: strings.Repeat("y", 30), Scope: "Locals", Children: []Variable{{Name: "[0]", Value: "a\nb"}}}},
 				Dumps:  []Dump{{Expression: "len(items)", Value: "3"}, {Expression: "nope", Error: "could not find symbol"}}},
 			{Kind: KindOutput, Category: "stderr", Text: "warn\n"},
 		},
@@ -269,6 +269,13 @@ func TestRenderTailAndTruncation(t *testing.T) {
 	}
 	if strings.Contains(out, "transcript ") {
 		t.Errorf("tail names a transcript it was not given:\n%s", out)
+	}
+	// Several scopes get a heading each.
+	tr.Entries[1].Locals = append(tr.Entries[1].Locals, Variable{Name: "g", Value: "1", Scope: "Globals"})
+	b.Reset()
+	RenderRun(&b, tr, 0, "")
+	if out := b.String(); !strings.Contains(out, "  locals (Locals):\n    n = 3\n") || !strings.Contains(out, "      [0] = a\\nb\n  locals (Globals):\n    g = 1\n") {
+		t.Errorf("scope headings:\n%s", out)
 	}
 }
 

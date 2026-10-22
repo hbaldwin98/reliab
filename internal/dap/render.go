@@ -86,11 +86,21 @@ func renderStop(w io.Writer, e Entry, width int) {
 		}
 		fmt.Fprintf(w, "%s%s:%d %s\n", lead, loc, f.Line, f.Function)
 	}
-	if len(e.Locals) > 0 {
-		fmt.Fprintln(w, "  locals:")
-		for _, v := range e.Locals {
-			renderVar(w, v, "    ", width)
+	// One heading per scope when the adapter gives several (debugpy's
+	// Locals and Globals); one plain heading otherwise.
+	scopes := map[string]bool{}
+	for _, v := range e.Locals {
+		scopes[v.Scope] = true
+	}
+	for i, v := range e.Locals {
+		if i == 0 || v.Scope != e.Locals[i-1].Scope {
+			if len(scopes) > 1 {
+				fmt.Fprintf(w, "  locals (%s):\n", v.Scope)
+			} else if i == 0 {
+				fmt.Fprintln(w, "  locals:")
+			}
 		}
+		renderVar(w, v, "    ", width)
 	}
 	if len(e.Dumps) > 0 {
 		fmt.Fprintln(w, "  dumps:")
