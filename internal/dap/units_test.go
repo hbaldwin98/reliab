@@ -170,6 +170,37 @@ func TestPathMapperResolvesTheRoot(t *testing.T) {
 	}
 }
 
+// docs/windows.md: macOS's /var is a symlink to /private/var, so the root
+// git reports and the path an adapter reports can differ by a symlink in
+// either direction; the transcript must still be repo-relative
+// (knowledge/decisions/debug-adapter-seam.md).
+func TestPathMapperResolvesTheAdapterPath(t *testing.T) {
+	tmp := t.TempDir()
+	real := filepath.Join(tmp, "real")
+	if err := os.MkdirAll(filepath.Join(real, "a"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(real, "a", "b.go"), []byte("package a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(tmp, "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("cannot make a symlink here: %v", err)
+	}
+	root, err := filepath.EvalSymlinks(real)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := NewPathMapper(root, "")
+	if got := m.Rel(filepath.Join(link, "a", "b.go")); got != "a/b.go" {
+		t.Errorf("Rel through the symlink = %q, want a/b.go", got)
+	}
+	// A file the adapter names that is not on disk still maps by its directory.
+	if got := m.Rel(filepath.Join(link, "a", "gone.go")); got != "a/gone.go" {
+		t.Errorf("Rel of a missing file through the symlink = %q, want a/gone.go", got)
+	}
+}
+
 // docs/debug.md, flags: --break file:line, relative to the repository root;
 // 'file:line if cond' adds a condition.
 func TestParseBreak(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -251,7 +252,29 @@ func (m PathMapper) Rel(p string) string {
 			return rel
 		}
 	}
+	// The adapter may spell the root through a symlink the root itself was
+	// resolved past (macOS: /var and /private/var); resolve its path too.
+	if r, ok := resolved(s); ok && r != s {
+		return m.Rel(r)
+	}
 	return s
+}
+
+// resolved is p with symlinks resolved, or, when p is not on disk, its
+// directory resolved and its name kept.
+func resolved(p string) (string, bool) {
+	if r, err := filepath.EvalSymlinks(filepath.FromSlash(p)); err == nil {
+		return slash(r), true
+	}
+	dir, name := path.Split(p)
+	if dir == "" || dir == p {
+		return "", false
+	}
+	r, err := filepath.EvalSymlinks(filepath.FromSlash(dir))
+	if err != nil {
+		return "", false
+	}
+	return slash(r) + "/" + name, true
 }
 
 // Abs is the absolute native path for a repo-relative or absolute file.
