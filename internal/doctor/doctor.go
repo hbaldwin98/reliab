@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hbaldwin98/reliab/internal/dap"
 	"github.com/hbaldwin98/reliab/internal/gitx"
 	"github.com/hbaldwin98/reliab/internal/profile"
 	"github.com/hbaldwin98/reliab/internal/verify"
@@ -73,6 +74,7 @@ func Run(dir string) []Check {
 
 	out = append(out, versionPin(root)...)
 	out = append(out, tools(p)...)
+	out = append(out, debugAdapter(p)...)
 	out = append(out, missingRoles(p)...)
 	return out
 }
@@ -140,6 +142,30 @@ func tools(p *profile.Profile) []Check {
 		}
 	}
 	return out
+}
+
+// debugAdapter checks that the debug adapter's first word is on PATH when
+// the profile has a debug section (knowledge/decisions/debug-adapter-seam.md).
+// Like a missing tool, a missing adapter warns.
+func debugAdapter(p *profile.Profile) []Check {
+	if p.Debug == nil {
+		return nil
+	}
+	a := p.Debug.Adapter
+	words, err := dap.SplitCommand(a.Run)
+	switch {
+	case err != nil:
+		return []Check{{"debug adapter", Fail, "debug.adapter.run: " + err.Error()}}
+	case len(words) == 0:
+		return []Check{{"debug adapter", Fail, "debug.adapter.run is empty"}}
+	case strings.Contains(words[0], "{"):
+		return []Check{{"debug adapter", OK, words[0] + " (" + a.Transport + "; a placeholder, checked when reliab debug runs)"}}
+	}
+	bin := words[0]
+	if _, err := exec.LookPath(bin); err != nil {
+		return []Check{{"debug adapter", Warn, bin + " is not on PATH; reliab debug run, attach, and probe need it"}}
+	}
+	return []Check{{"debug adapter", OK, bin + " (" + a.Transport + "); reliab debug probe checks it answers"}}
 }
 
 // shellBuiltins are words a POSIX sh runs itself, so they are never on PATH.

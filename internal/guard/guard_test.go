@@ -254,6 +254,20 @@ func TestSessionStart(t *testing.T) {
 	}
 }
 
+// knowledge/decisions/debug-adapter-seam.md: the session-start hook names a
+// debug section in its reminder as it names the on-demand skills.
+func TestSessionStartNamesTheDebugSection(t *testing.T) {
+	t.Parallel()
+	plain := open(t, "commands:\n  build: \"true\"\n").SessionStart(hookio.Input{}).Context
+	if !strings.Contains(plain, "diagnose (from a symptom") || strings.Contains(plain, "debug section") {
+		t.Errorf("without a debug section: %q", plain)
+	}
+	r := open(t, "commands:\n  build: \"true\"\ndebug:\n  adapter: { run: netcoredbg --interpreter=vscode, transport: stdio }\n  launch: { program: x }\n")
+	if c := r.SessionStart(hookio.Input{}).Context; !strings.Contains(c, "debug section (netcoredbg over stdio)") || !strings.Contains(c, "reliab debug run") {
+		t.Errorf("with a debug section: %q", c)
+	}
+}
+
 // A snapshot tool that approves by command names no protected path, so the
 // profile lists such commands and the hook reminds the agent of them.
 func TestPreBashProtectedCommands(t *testing.T) {

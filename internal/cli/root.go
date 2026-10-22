@@ -40,6 +40,7 @@ func newRoot() *cobra.Command {
 		newReportCmd(),
 		newFindingsCmd(),
 		newCharacterizeCmd(),
+		newDebugCmd(),
 		newGateCmd(),
 		newBaselineCmd(),
 		newApproveCmd(),

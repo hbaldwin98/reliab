@@ -1,6 +1,7 @@
 package doctor
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/hbaldwin98/reliab/internal/profile"
@@ -38,5 +39,29 @@ func TestMissingRoles(t *testing.T) {
 	got := missingRoles(p)
 	if len(got) != 2 || got[0].Name != "role T2" || got[1].Name != "role T10" || got[0].Status != Warn || got[0].Detail != "needed but missing: no property library yet" {
 		t.Errorf("missing roles = %+v", got)
+	}
+}
+
+// knowledge/decisions/debug-adapter-seam.md: reliab doctor checks that the
+// debug adapter's first word is on PATH when the section is present; as a
+// missing tool does, a missing adapter warns.
+func TestDebugAdapter(t *testing.T) {
+	check := func(run string) []Check {
+		return debugAdapter(&profile.Profile{Debug: &profile.Debug{Adapter: profile.DebugAdapter{Run: run, Transport: "stdio"}}})
+	}
+	if got := debugAdapter(&profile.Profile{}); got != nil {
+		t.Errorf("no debug section: %+v", got)
+	}
+	if got := check("no-such-adapter-anywhere --interpreter=vscode"); len(got) != 1 || got[0].Status != Warn || !strings.Contains(got[0].Detail, "no-such-adapter-anywhere is not on PATH") {
+		t.Errorf("missing adapter = %+v", got)
+	}
+	if got := check("git dap"); len(got) != 1 || got[0].Status != OK || !strings.HasPrefix(got[0].Detail, "git (stdio)") {
+		t.Errorf("adapter on PATH = %+v", got)
+	}
+	if got := check(`"unclosed`); len(got) != 1 || got[0].Status != Fail {
+		t.Errorf("bad run = %+v", got)
+	}
+	if got := check("{root}/bin/adapter"); len(got) != 1 || got[0].Status != OK || !strings.Contains(got[0].Detail, "placeholder") {
+		t.Errorf("placeholder = %+v", got)
 	}
 }

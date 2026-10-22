@@ -552,9 +552,13 @@ func (r *Repo) SessionStart(in hookio.Input) hookio.Decision {
 - A failing test is a finding: reproduce it, fix product code (never an assertion or tolerance), or classify it with reliab findings classify.
 - Every property cites its source of intent in a comment.
 - Protected oracles change only with a person's approval: never edit ` + strings.Join(p.ProtectedPaths, ", ") + protectedCommandsRule(p.ProtectedCommands) + protectedEditsRule(p.ProtectedEdits) + ` (R2).
-- On request, the plugin's skills test one area: mutation (how strong its tests are), properties (tests from stated intent), fuzz (parsers and decoders), characterize (around a refactor or migration), adapter (a tool reliab cannot read).
+- On request, the plugin's skills test one area: mutation (how strong its tests are), properties (tests from stated intent), fuzz (parsers and decoders), characterize (around a refactor or migration), adapter (a tool reliab cannot read), diagnose (from a symptom to a failing test).
 - To explain reliab or what to run when: reliab docs overview; to wire CI: reliab docs ci.
 `)
+	if d := p.Debug; d != nil {
+		adapter, _, _ := strings.Cut(strings.TrimSpace(d.Adapter.Run), " ")
+		fmt.Fprintf(&b, "- The profile has a debug section (%s over %s): when a test's output does not show a failure's cause, reliab debug run records its stops, locals, and dumps (reliab docs debug); attach only to a process the person names.\n", adapter, d.Adapter.Transport)
+	}
 	// The plugin launcher exports its version; the repository pins one for CI.
 	if plugin := os.Getenv("RELIAB_PLUGIN_VERSION"); plugin != "" {
 		if raw, err := os.ReadFile(filepath.Join(r.Root, ".reliab-version")); err == nil {
