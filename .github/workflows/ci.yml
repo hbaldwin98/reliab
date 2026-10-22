@@ -46,6 +46,9 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go vet ./...
+      # internal/dap's integration test debugs a Go test with the real
+      # dlv dap and skips without it (knowledge/decisions/debug-adapter-seam.md).
+      - run: go install github.com/go-delve/delve/cmd/dlv@v1.27.2
       - run: go test -timeout 300s ./...
         shell: bash
   dogfood:
