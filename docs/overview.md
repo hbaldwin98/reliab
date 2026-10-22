@@ -40,6 +40,7 @@ why, is in the profile.
 | Harden a parser or decoder | `reliab verify --only fuzz --scope <path>` | `/reliab:fuzz` |
 | A refactor or migration | `reliab characterize capture`, change, `compare`, `discard` | `/reliab:characterize` |
 | A tool reliab cannot read | an adapter that writes reliab's findings file | `/reliab:adapter`, `reliab docs adapters` |
+| A symptom whose cause the tests' output does not show | `reliab debug run` with breakpoints and dumps (needs the profile's `debug` section) | `/reliab:diagnose`, `reliab docs debug` |
 | On a schedule | `reliab verify --tier nightly` (no budget) | |
 | Something is misconfigured | `reliab doctor` | |
 

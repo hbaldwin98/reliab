@@ -31,6 +31,12 @@ It has two parts:
   plugin marketplace. Skills teach the agent when to run the CLI; hooks call
   the CLI; the repository's permission deny rules protect the oracles.
 
+The plugin's on-demand skills test one area: `mutation`, `properties`,
+`fuzz`, `characterize`, and `adapter`; `diagnose` (`/reliab:diagnose`)
+takes a symptom to its cause and a failing test, running the test under the
+language's debug adapter with `reliab debug run` when its output does not
+show the cause ([debug-adapter-seam](/decisions/debug-adapter-seam.md)).
+
 reliab is deliberately ignorant of stacks, CI systems, and where it is used.
 Everything stack-specific lives in a profile; everything CI-specific is the
 user's wiring of two commands and their exit codes. See

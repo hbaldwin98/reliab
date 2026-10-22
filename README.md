@@ -100,6 +100,23 @@ reliab characterize discard                         # captures live in .reliab/ 
 
 The `characterize` skill drives this cycle.
 
+When a test's output does not show a failure's cause, run the test under
+the language's debug adapter. The profile's optional `debug` section names
+the adapter (delve, debugpy, netcoredbg, lldb-dap: any that speaks the
+Debug Adapter Protocol) and its launch arguments; `reliab docs debug` has a
+block for each:
+
+```sh
+reliab debug probe                  # the adapter answers; its capabilities
+reliab debug run --set program=./internal/report --set test=TestRouteKinds \
+  --break internal/report/route.go:88 --dump 'f' --dump 'len(items)'
+```
+
+Each stop prints the stack, the locals, and the dumps, and the run writes a
+transcript under `.reliab/debug/`. It is non-interactive: no stepping. The
+`/reliab:diagnose` skill takes a symptom to its cause and a
+failing-then-passing test with it.
+
 Before a branch merges into main, by a PR or locally, and once the change is
 committed, the plugin's `reliab:reviewer` agent re-runs the pre-PR tier in
 a clean worktree, reads the diff, and records a verdict that only it may

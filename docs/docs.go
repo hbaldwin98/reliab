@@ -20,5 +20,11 @@ var Overview string
 //go:embed ci.md
 var CI string
 
+// Debug is the debug section, the adapters it was tried with, and the
+// reliab debug commands (debug.md).
+//
+//go:embed debug.md
+var Debug string
+
 // Pages maps a reliab docs topic to its page.
-var Pages = map[string]string{"adapters": Adapters, "ci": CI, "overview": Overview}
+var Pages = map[string]string{"adapters": Adapters, "ci": CI, "debug": Debug, "overview": Overview}

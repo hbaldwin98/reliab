@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/hbaldwin98/reliab/internal/profile"
 )
 
 // python returns a working Python 3, or skips: the example is checked
@@ -80,5 +82,37 @@ func write(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Every adapter block on the debug page is a profile section reliab
+// accepts, so a person can paste it (knowledge/decisions/debug-adapter-seam.md:
+// the consumer check runs "from the docs page's block alone").
+func TestDebugBlocksValidate(t *testing.T) {
+	const minimal = "schemaVersion: 0.1.0\nname: docs\nstarting_condition: greenfield\n" +
+		"paths: { product: [\"src/**\"], tests: [\"test/**\"] }\nroles:\n" +
+		"  T1: { tool: x }\n  T2: { tool: x }\n  T3: { tool: x }\n  T4: { tool: x }\n  T5: { tool: x }\n" +
+		"  T6: { tool: x }\n  T7: { tool: x }\n  T8: { tool: x }\n  T9: { tool: x }\n  T10: { tool: x }\n" +
+		"  T11: { tool: x }\n  T12: { tool: x }\n  T13: { tool: x }\n  T14: { tool: x }\n" +
+		"commands:\n  build: \"true\"\n"
+	n := 0
+	for _, block := range strings.Split(Debug, "```yaml\n")[1:] {
+		body, _, ok := strings.Cut(block, "\n```")
+		if !ok || !strings.HasPrefix(body, "debug:") {
+			continue
+		}
+		n++
+		p, err := profile.Parse([]byte(minimal + body + "\n"))
+		if err != nil {
+			t.Errorf("block %d does not validate: %v\n%s", n, err, body)
+			continue
+		}
+		if p.Debug == nil || p.Debug.Launch == nil || p.Debug.Attach == nil {
+			t.Errorf("block %d lacks launch or attach:\n%s", n, body)
+		}
+	}
+	// The general block and delve, debugpy, netcoredbg, lldb-dap.
+	if n != 5 {
+		t.Errorf("found %d debug blocks, want 5", n)
 	}
 }

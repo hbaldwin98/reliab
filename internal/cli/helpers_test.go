@@ -126,7 +126,7 @@ func TestDocsAdapters(t *testing.T) {
 	if code != ExitOK || !strings.HasPrefix(out, "# Writing an adapter\n") || !strings.Contains(out, "reliab findings check") {
 		t.Errorf("code %d out %.80q", code, out)
 	}
-	if code, out, _ := run("docs"); code != ExitOK || out != "topics: adapters, ci, overview\n" {
+	if code, out, _ := run("docs"); code != ExitOK || out != "topics: adapters, ci, debug, overview\n" {
 		t.Errorf("no topic: code %d out %q", code, out)
 	}
 	if code, out, _ := run("docs", "overview"); code != ExitOK || !strings.HasPrefix(out, "# reliab in this repository\n") {
@@ -135,7 +135,12 @@ func TestDocsAdapters(t *testing.T) {
 	if code, out, _ := run("docs", "ci"); code != ExitOK || !strings.Contains(out, "reliab gate protected") {
 		t.Errorf("ci: code %d out %.80q", code, out)
 	}
-	if code, _, errOut := run("docs", "nosuch"); code != ExitConfig || !strings.Contains(errOut, "topics: adapters, ci, overview") {
+	// knowledge/decisions/debug-adapter-seam.md: reliab docs debug prints
+	// the debug page.
+	if code, out, _ := run("docs", "debug"); code != ExitOK || !strings.HasPrefix(out, "# Debugging with reliab\n") || !strings.Contains(out, "reliab debug probe") {
+		t.Errorf("debug: code %d out %.80q", code, out)
+	}
+	if code, _, errOut := run("docs", "nosuch"); code != ExitConfig || !strings.Contains(errOut, "topics: adapters, ci, debug, overview") {
 		t.Errorf("unknown topic: code %d err %q", code, errOut)
 	}
 }

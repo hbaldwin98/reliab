@@ -309,7 +309,30 @@ before and after, and put both times in the report.
     from inside test code (an auto-accept or auto-verify setting).
   Check each pattern against the tool's real command line.
 
-## 8. The gate
+## 8. A debug adapter (optional)
+
+A debugger is not a role: no layer must have one. The profile's `debug`
+section lets `reliab debug run` and the diagnose skill show a running
+test's state when its output does not show a failure's cause. When the
+repository's language has a known adapter (`reliab docs debug` has a block
+for delve, debugpy, netcoredbg, and lldb-dap, each marked verified or
+illustrative):
+
+1. Check the adapter is installed (`dlv version`, `python -m debugpy
+   --version`, `netcoredbg --version`). Installing one is the person's
+   call: name it as an open question, do not install it.
+2. Add the page's block to the profile, adjusted to how this repository
+   runs one test (step 3), and run `reliab profile validate`.
+3. Run `reliab debug probe`. It must list the adapter's capabilities.
+4. Run `reliab debug run` once on a real, passing test with one breakpoint
+   on a line with code and one `--dump`. It must stop there, verified, and
+   print the locals and the dump.
+
+Record the result in the report, or why the section is left out (no known
+adapter, not installed, the probe failed and how). A block that failed
+step 3 or 4 does not stay in the profile.
+
+## 9. The gate
 
 ```sh
 reliab profile validate
@@ -350,7 +373,8 @@ Give the person:
 5. **Open questions**: each choice that is the person's (a tool to add, a
    project conversion, an oracle to protect, a CI probe), with your
    recommendation.
-6. **Skipped**: anything you did not probe and why.
+6. **Skipped**: anything you did not probe and why, including the debug
+   section when it is left out (step 8).
 7. **Next steps**, for the person to choose; you start none of them:
    - **CI**: the commands to wire and where each runs (`reliab docs ci`
      has them), and the S0 probes on a CI agent, which set `verified_on`.
