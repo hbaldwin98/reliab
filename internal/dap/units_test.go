@@ -68,6 +68,8 @@ func TestExpand(t *testing.T) {
 	}
 }
 
+// docs/debug.md, Placeholders: --set name=value fills {name}; {port}, {cwd},
+// {root} come from reliab and {pid} from --pid, so --set cannot name them.
 func TestParseSets(t *testing.T) {
 	got, err := ParseSets([]string{"program=./x", "test=TestA=B", "empty="})
 	if err != nil || !reflect.DeepEqual(got, map[string]string{"program": "./x", "test": "TestA=B", "empty": ""}) {
@@ -80,6 +82,8 @@ func TestParseSets(t *testing.T) {
 	}
 }
 
+// docs/debug.md: adapter.run splits on spaces; single or double quotes group
+// words, and a backslash is an ordinary character.
 func TestSplitCommand(t *testing.T) {
 	tests := []struct {
 		in   string
@@ -102,8 +106,9 @@ func TestSplitCommand(t *testing.T) {
 	}
 }
 
-// Paths from the adapter are made repo-relative with source_root and
-// slash-separated, so a transcript reads the same on Windows and CI.
+// knowledge/decisions/debug-adapter-seam.md and docs/debug.md, The
+// transcript: paths from the adapter are made repo-relative with source_root
+// and slash-separated, so a transcript reads the same on Windows and CI.
 func TestPathMapper(t *testing.T) {
 	m := NewPathMapper("C:/src/repo", ".")
 	tests := []struct{ in, want string }{
@@ -165,6 +170,8 @@ func TestPathMapperResolvesTheRoot(t *testing.T) {
 	}
 }
 
+// docs/debug.md, flags: --break file:line, relative to the repository root;
+// 'file:line if cond' adds a condition.
 func TestParseBreak(t *testing.T) {
 	m := NewPathMapper(filepath.Join(os.TempDir(), "r"), "")
 	b, err := ParseBreak(`internal/report/route.go:120 if f.Kind == "below-threshold"`, m)
@@ -250,6 +257,9 @@ end: exited, program exit code 0; 1 stop(s), 2.5s; exit 0; transcript .reliab/de
 	}
 }
 
+// knowledge/decisions/debug-adapter-seam.md, The text rendering: a one-line
+// tail with the exit code and the transcript's path; long values are cut
+// with a marker, never silently.
 func TestRenderTailAndTruncation(t *testing.T) {
 	tr := sampleTranscript()
 	tr.End = End{Reason: EndMaxStops, Message: "stopped 20 times (--max-stops)"}
@@ -279,6 +289,9 @@ func TestRenderTailAndTruncation(t *testing.T) {
 	}
 }
 
+// docs/debug.md, Exit codes: 0 ran to its end with no exception stop; 1 an
+// exception stop or a limit ended the run; 2 failed before the program ran;
+// 3 the budget passed.
 func TestComputeExitCode(t *testing.T) {
 	tests := []struct {
 		reason    string
@@ -340,6 +353,8 @@ func TestWriteValidates(t *testing.T) {
 	}
 }
 
+// knowledge/decisions/schemas-and-versioning.md: schemas are strict, with a
+// semver schemaVersion; schemas/debug-transcript.schema.json follows it.
 func TestTranscriptSchemaRejects(t *testing.T) {
 	raw, _ := json.Marshal(sampleTranscript())
 	tests := []struct {

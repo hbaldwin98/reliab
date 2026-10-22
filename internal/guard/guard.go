@@ -18,6 +18,7 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 
+	"github.com/hbaldwin98/reliab/internal/dap"
 	"github.com/hbaldwin98/reliab/internal/gitx"
 	"github.com/hbaldwin98/reliab/internal/hookio"
 	"github.com/hbaldwin98/reliab/internal/profile"
@@ -556,7 +557,10 @@ func (r *Repo) SessionStart(in hookio.Input) hookio.Decision {
 - To explain reliab or what to run when: reliab docs overview; to wire CI: reliab docs ci.
 `)
 	if d := p.Debug; d != nil {
-		adapter, _, _ := strings.Cut(strings.TrimSpace(d.Adapter.Run), " ")
+		adapter := strings.TrimSpace(d.Adapter.Run)
+		if argv, err := dap.SplitCommand(adapter); err == nil && len(argv) > 0 {
+			adapter = argv[0]
+		}
 		fmt.Fprintf(&b, "- The profile has a debug section (%s over %s): when a test's output does not show a failure's cause, reliab debug run records its stops, locals, and dumps (reliab docs debug); attach only to a process the person names.\n", adapter, d.Adapter.Transport)
 	}
 	// The plugin launcher exports its version; the repository pins one for CI.

@@ -266,6 +266,12 @@ func TestSessionStartNamesTheDebugSection(t *testing.T) {
 	if c := r.SessionStart(hookio.Input{}).Context; !strings.Contains(c, "debug section (netcoredbg over stdio)") || !strings.Contains(c, "reliab debug run") {
 		t.Errorf("with a debug section: %q", c)
 	}
+	// docs/debug.md: adapter.run splits on spaces and quotes group words, so
+	// a quoted Windows path names the adapter whole.
+	q := open(t, "commands:\n  build: \"true\"\ndebug:\n  adapter: { run: '\"C:\\Program Files\\dbg\\netcoredbg.exe\" --interpreter=vscode', transport: stdio }\n  launch: { program: x }\n")
+	if c := q.SessionStart(hookio.Input{}).Context; !strings.Contains(c, `debug section (C:\Program Files\dbg\netcoredbg.exe over stdio)`) {
+		t.Errorf("with a quoted adapter path: %q", c)
+	}
 }
 
 // A snapshot tool that approves by command names no protected path, so the
