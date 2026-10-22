@@ -13,6 +13,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"time"
 
 	godap "github.com/google/go-dap"
 )
@@ -52,6 +53,21 @@ type Script struct {
 	Silent map[string]bool
 	// NoTerminated sends exited without terminated, then hangs up.
 	NoTerminated bool
+	// CapabilitiesEvent, when set, is sent as a capabilities event after
+	// initialize.
+	CapabilitiesEvent *godap.Capabilities
+	// Raw are messages sent as they are after initialize: stray responses,
+	// unknown message types, malformed JSON.
+	Raw []string
+	// EmptyBodies answers these commands with no body at all.
+	EmptyBodies map[string]bool
+	// DropBreakpoints answers setBreakpoints with no breakpoints.
+	DropBreakpoints bool
+	// IgnoreLevels returns every frame whatever stackTrace's levels say.
+	IgnoreLevels bool
+	// NeverAnswerLaunch, with LaunchAfterConfigurationDone, never answers
+	// the held launch.
+	NeverAnswerLaunch bool
 }
 
 // Step is one piece of output or one stop.
@@ -74,6 +90,7 @@ type Stop struct {
 
 // Received is one message the fake adapter got from the client.
 type Received struct {
+	Seq       int
 	Type      string
 	Command   string
 	Arguments json.RawMessage
@@ -166,7 +183,7 @@ func (a *Adapter) serve() {
 			return
 		}
 		a.mu.Lock()
-		a.received = append(a.received, Received{Type: m.Type, Command: m.Command, Arguments: m.Arguments, Success: m.Success})
+		a.received = append(a.received, Received{Seq: m.Seq, Type: m.Type, Command: m.Command, Arguments: m.Arguments, Success: m.Success})
 		a.mu.Unlock()
 		if m.Type != "request" {
 			continue
@@ -191,7 +208,7 @@ func (a *Adapter) send(v map[string]any) {
 
 func (a *Adapter) respond(m message, body any) {
 	v := map[string]any{"type": "response", "request_seq": m.Seq, "command": m.Command, "success": true}
-	if body != nil {
+	if body != nil && !a.sc.EmptyBodies[m.Command] {
 		v["body"] = body
 	}
 	a.send(v)
@@ -221,6 +238,14 @@ func (a *Adapter) handle(m message) bool {
 		for _, n := range sc.Noise {
 			a.event(n, map[string]any{})
 		}
+		if sc.CapabilitiesEvent != nil {
+			a.event("capabilities", map[string]any{"capabilities": sc.CapabilitiesEvent})
+		}
+		for _, raw := range sc.Raw {
+			a.wmu.Lock()
+			_ = godap.WriteBaseMessage(a.conn, []byte(raw))
+			a.wmu.Unlock()
+		}
 	case "launch", "attach":
 		if sc.LaunchError != "" {
 			a.fail(m, sc.LaunchError)
@@ -248,12 +273,15 @@ func (a *Adapter) handle(m message) bool {
 			}
 			out[i] = godap.Breakpoint{Id: i + 1, Verified: !bad, Message: msg, Line: line}
 		}
+		if sc.DropBreakpoints {
+			out = []godap.Breakpoint{}
+		}
 		a.respond(m, godap.SetBreakpointsResponseBody{Breakpoints: out})
 	case "setExceptionBreakpoints":
 		a.respond(m, nil)
 	case "configurationDone":
 		a.respond(m, nil)
-		if a.held != 0 {
+		if a.held != 0 && !sc.NeverAnswerLaunch {
 			a.respond(message{Seq: a.held, Command: "launch"}, nil)
 			a.held = 0
 		}
@@ -267,7 +295,7 @@ func (a *Adapter) handle(m message) bool {
 		if a.current != nil {
 			frames = a.current.Frames
 		}
-		if args.Levels > 0 && len(frames) > args.Levels {
+		if !sc.IgnoreLevels && args.Levels > 0 && len(frames) > args.Levels {
 			frames = frames[:args.Levels]
 		}
 		a.respond(m, godap.StackTraceResponseBody{StackFrames: frames, TotalFrames: len(frames)})
@@ -361,7 +389,10 @@ const ChildArg = "daptest-adapter"
 // Main makes a test binary a fake adapter when it is run as
 //
 //	<test binary> daptest-adapter stdio <script>
-//	<test binary> daptest-adapter tcp <port> <script> [ready line]
+//	<test binary> daptest-adapter tcp <port> <script> [ready line [delay ms]]
+//
+// With a delay, the adapter waits that long before it listens and prints
+// the ready line.
 //
 // Call it first in TestMain; it returns when the binary is not a child.
 func Main(scripts map[string]*Script) {
@@ -392,6 +423,10 @@ func child(args []string, scripts map[string]*Script) int {
 		if err != nil || sc == nil {
 			fmt.Fprintln(os.Stderr, "bad tcp arguments", args)
 			return 2
+		}
+		if len(args) > 4 {
+			ms, _ := strconv.Atoi(args[4])
+			time.Sleep(time.Duration(ms) * time.Millisecond)
 		}
 		l, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
 		if err != nil {

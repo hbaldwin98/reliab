@@ -315,8 +315,12 @@ func TestWriteValidates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p1 != ".reliab/debug/20261021-153000.json" || p2 != ".reliab/debug/20261021-153000-2.json" {
-		t.Errorf("paths = %s, %s", p1, p2)
+	p3, err := Write(dir, tr, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p1 != ".reliab/debug/20261021-153000.json" || p2 != ".reliab/debug/20261021-153000-2.json" || p3 != ".reliab/debug/20261021-153000-3.json" {
+		t.Errorf("paths = %s, %s, %s", p1, p2, p3)
 	}
 	a, _ := os.ReadFile(filepath.Join(dir, filepath.FromSlash(p2)))
 	b, err := os.ReadFile(filepath.Join(dir, ".reliab", "debug", "last.json"))

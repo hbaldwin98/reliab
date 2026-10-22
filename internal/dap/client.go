@@ -9,7 +9,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -263,12 +262,10 @@ func (c *Client) Close() error {
 	return err
 }
 
+// readErr is why the connection ended (io.EOF when the adapter closed it).
 func (c *Client) readErr() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.err == nil {
-		return io.EOF
-	}
 	return c.err
 }
 
@@ -325,9 +322,7 @@ func (c *Client) read() {
 	}
 	c.mu.Lock()
 	c.closed = true
-	if !errors.Is(err, io.EOF) {
-		c.err = err
-	}
+	c.err = err
 	for seq, p := range c.pending {
 		close(p.ch)
 		delete(c.pending, seq)

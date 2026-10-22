@@ -58,6 +58,9 @@ func TestDebugAdapter(t *testing.T) {
 	if got := check("git dap"); len(got) != 1 || got[0].Status != OK || !strings.HasPrefix(got[0].Detail, "git (stdio)") {
 		t.Errorf("adapter on PATH = %+v", got)
 	}
+	if got := check("   "); len(got) != 1 || got[0].Status != Fail || !strings.Contains(got[0].Detail, "empty") {
+		t.Errorf("blank run = %+v", got)
+	}
 	if got := check(`"unclosed`); len(got) != 1 || got[0].Status != Fail {
 		t.Errorf("bad run = %+v", got)
 	}

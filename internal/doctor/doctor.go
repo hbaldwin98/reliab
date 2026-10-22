@@ -152,13 +152,15 @@ func debugAdapter(p *profile.Profile) []Check {
 		return nil
 	}
 	a := p.Debug.Adapter
+	// if statements, not case expressions, so gremlins sees them covered.
 	words, err := dap.SplitCommand(a.Run)
-	switch {
-	case err != nil:
+	if err != nil {
 		return []Check{{"debug adapter", Fail, "debug.adapter.run: " + err.Error()}}
-	case len(words) == 0:
+	}
+	if len(words) == 0 {
 		return []Check{{"debug adapter", Fail, "debug.adapter.run is empty"}}
-	case strings.Contains(words[0], "{"):
+	}
+	if strings.Contains(words[0], "{") {
 		return []Check{{"debug adapter", OK, words[0] + " (" + a.Transport + "; a placeholder, checked when reliab debug runs)"}}
 	}
 	bin := words[0]

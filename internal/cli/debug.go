@@ -359,8 +359,6 @@ func endText(t *dap.Transcript) string {
 			return "at an exception"
 		}
 	}
-	if t.End.Message != "" {
-		return "by " + t.End.Reason + " (" + t.End.Message + ")"
-	}
-	return "by " + t.End.Reason
+	// Every end that exits 1 without an exception carries a message.
+	return "by " + t.End.Reason + " (" + t.End.Message + ")"
 }

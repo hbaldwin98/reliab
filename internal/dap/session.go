@@ -52,7 +52,7 @@ func ParseBreak(spec string, m PathMapper) (Break, error) {
 	}
 	line, err := strconv.Atoi(loc[i+1:])
 	if err != nil || line < 1 {
-		return Break{}, fmt.Errorf("--break %q: %q is not a line number", spec, loc[i+1:])
+		return Break{}, fmt.Errorf("--break %q: want a line number from 1 after the last colon", spec)
 	}
 	return Break{Spec: spec, File: m.Abs(loc[:i]), Line: line, Condition: strings.TrimSpace(cond)}, nil
 }
@@ -77,7 +77,6 @@ type Options struct {
 	// OnReady is called once breakpoints and exception filters are set,
 	// before the program runs, so warnings print first.
 	OnReady func(*Transcript)
-	Now     func() time.Time
 }
 
 // SetupError is a failure before the program ran: exit code 2.
@@ -102,9 +101,6 @@ func Initialize(ctx context.Context, c *Client, adapterID string) (godap.Capabil
 // program ends or a limit does. A *SetupError means the program never ran;
 // ctx ending records the budget as the end.
 func Session(ctx context.Context, c *Client, t *Transcript, opt Options) error {
-	if opt.Now == nil {
-		opt.Now = time.Now
-	}
 	s := &session{c: c, t: t, opt: opt}
 	t.Mode = opt.Mode
 	t.Request = RequestInfo{Command: requestFor(opt.Mode), Arguments: opt.Arguments}
@@ -203,39 +199,21 @@ func (s *session) run(ctx context.Context) error {
 	if !launched {
 		// The launch builds the program for some adapters: wait as long
 		// as the budget allows.
-		if r, ok := <-launchWait(ctx, launch); !ok {
-			return &SetupError{fmt.Errorf("%s: no response: %w", launch.Command, errOr(ctx.Err(), s.c.readErr()))}
-		} else if err := r.Err(); err != nil {
-			return &SetupError{err}
+		select {
+		case r, ok := <-lch:
+			if !ok {
+				return &SetupError{fmt.Errorf("%s: the adapter closed the connection: %w", launch.Command, s.c.readErr())}
+			}
+			if err := r.Err(); err != nil {
+				return &SetupError{err}
+			}
+		case <-ctx.Done():
+			return &SetupError{fmt.Errorf("%s: no response: %w", launch.Command, ctx.Err())}
 		}
 	}
 	s.loop(ctx)
 	s.teardown(ctx)
 	return nil
-}
-
-func errOr(a, b error) error {
-	if a != nil {
-		return a
-	}
-	return b
-}
-
-// launchWait delivers the launch response, or closes when ctx ends or the
-// adapter goes away.
-func launchWait(ctx context.Context, p *Pending) <-chan *Response {
-	out := make(chan *Response, 1)
-	go func() {
-		defer close(out)
-		select {
-		case r, ok := <-p.ch:
-			if ok {
-				out <- r
-			}
-		case <-ctx.Done():
-		}
-	}()
-	return out
 }
 
 func (s *session) setBreakpoints(ctx context.Context) error {
@@ -365,7 +343,7 @@ func (s *session) loop(ctx context.Context) {
 				_ = json.Unmarshal(ev.Body, &b)
 				stops++
 				if err := s.recordStop(ctx, stops, b); err != nil {
-					s.endWith(EndAdapterError, err.Error())
+					s.failed(ctx, err)
 					return
 				}
 				if stops >= maxStops {
@@ -375,11 +353,7 @@ func (s *session) loop(ctx context.Context) {
 				}
 				thread := s.t.Entries[len(s.t.Entries)-1].Thread
 				if err := s.c.Continue(ctx, thread); err != nil {
-					if ctx.Err() != nil {
-						s.endWith(EndBudget, "the overall budget passed")
-					} else {
-						s.endWith(EndAdapterError, err.Error())
-					}
+					s.failed(ctx, err)
 					return
 				}
 			case "exited":
@@ -408,6 +382,15 @@ func (s *session) loop(ctx context.Context) {
 	}
 }
 
+// failed ends the run on a failed request: the budget when ctx ended it.
+func (s *session) failed(ctx context.Context, err error) {
+	if ctx.Err() != nil {
+		s.endWith(EndBudget, "the overall budget passed")
+		return
+	}
+	s.endWith(EndAdapterError, err.Error())
+}
+
 func (s *session) endWith(reason, msg string) {
 	s.t.End.Reason = reason
 	s.t.End.Message = msg
@@ -434,11 +417,6 @@ func (s *session) event(ev Event) {
 		cat := b.Category
 		if cat == "" {
 			cat = "console"
-		}
-		// Adjacent output of one category reads as one piece.
-		if n := len(s.t.Entries); n > 0 && s.t.Entries[n-1].Kind == KindOutput && s.t.Entries[n-1].Category == cat {
-			s.t.Entries[n-1].Text += text
-			return
 		}
 		s.t.Entries = append(s.t.Entries, Entry{Kind: KindOutput, Category: cat, Text: text})
 	case "capabilities":

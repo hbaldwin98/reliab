@@ -50,7 +50,8 @@ debug:
 - **`run`** splits on spaces; single or double quotes group words, and a
   backslash is an ordinary character, so Windows paths need no escaping.
 - The adapter runs from the repository root. Its own output goes to
-  `.reliab/debug/adapter.log`.
+  `.reliab/debug/adapter.log`; when it fails before the program runs,
+  reliab prints the last 64 KiB of that output.
 
 `reliab profile validate` checks the block; `reliab doctor` checks the
 adapter's first word is on PATH.

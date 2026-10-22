@@ -58,6 +58,10 @@ func TestStartStdio(t *testing.T) {
 	if !strings.Contains(log.String(), "fake adapter starting") {
 		t.Errorf("the adapter's stderr did not reach the log: %q", log.String())
 	}
+	// The log holds what the adapter printed, and no false alarm of reliab's.
+	if strings.Contains(log.String(), "reliab: cannot track") {
+		t.Errorf("log = %q", log.String())
+	}
 }
 
 func TestStartTCPWithReady(t *testing.T) {

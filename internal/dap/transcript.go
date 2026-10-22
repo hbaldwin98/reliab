@@ -2,10 +2,10 @@ package dap
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 )
@@ -197,11 +197,8 @@ func Write(root string, t *Transcript, now time.Time) (string, error) {
 			return "", err
 		}
 		_, werr := f.Write(raw)
-		if cerr := f.Close(); werr == nil {
-			werr = cerr
-		}
-		if werr != nil {
-			return "", werr
+		if err := errors.Join(werr, f.Close()); err != nil {
+			return "", err
 		}
 		break
 	}
@@ -266,21 +263,21 @@ func (m PathMapper) Abs(p string) string {
 }
 
 // candidates are the spellings of dir an adapter may report: as given,
-// and with symlinks or 8.3 short names resolved.
+// and with symlinks or 8.3 short names resolved (the two may be equal).
 func candidates(dir string) []string {
 	out := []string{slash(filepath.Clean(dir))}
-	if r, err := filepath.EvalSymlinks(dir); err == nil && slash(r) != out[0] {
+	if r, err := filepath.EvalSymlinks(dir); err == nil {
 		out = append(out, slash(r))
 	}
 	return out
 }
 
-// under returns p relative to dir when p is inside it. Windows paths
-// compare case-insensitively.
+// under returns p relative to dir when p is inside it. Paths with a drive
+// letter compare case-insensitively, as Windows does.
 func under(p, dir string) (string, bool) {
 	dir = strings.TrimSuffix(dir, "/")
 	cp, cd := p, dir
-	if runtime.GOOS == "windows" || hasDrive(p) {
+	if hasDrive(p) {
 		cp, cd = strings.ToLower(p), strings.ToLower(dir)
 	}
 	if cp == cd {

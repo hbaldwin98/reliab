@@ -278,27 +278,31 @@ func SplitCommand(line string) ([]string, error) {
 	var cur strings.Builder
 	inWord := false
 	var quote rune
+	// Conditions sit in if statements, not case expressions, which Go's
+	// coverage (and so gremlins) cannot see.
 	for _, r := range line {
-		switch {
-		case quote != 0:
+		if quote != 0 {
 			if r == quote {
 				quote = 0
 			} else {
 				cur.WriteRune(r)
 			}
-		case r == '"' || r == '\'':
-			quote = r
-			inWord = true
-		case r == ' ' || r == '\t' || r == '\n' || r == '\r':
+			continue
+		}
+		if r == '"' || r == '\'' {
+			quote, inWord = r, true
+			continue
+		}
+		if strings.ContainsRune(" \t\n\r", r) {
 			if inWord {
 				words = append(words, cur.String())
 				cur.Reset()
 				inWord = false
 			}
-		default:
-			cur.WriteRune(r)
-			inWord = true
+			continue
 		}
+		cur.WriteRune(r)
+		inWord = true
 	}
 	if quote != 0 {
 		return nil, fmt.Errorf("unclosed %c quote in %q", quote, line)
