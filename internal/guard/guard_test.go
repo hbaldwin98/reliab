@@ -272,6 +272,13 @@ func TestSessionStartNamesTheDebugSection(t *testing.T) {
 	if c := q.SessionStart(hookio.Input{}).Context; !strings.Contains(c, `debug section (C:\Program Files\dbg\netcoredbg.exe over stdio)`) {
 		t.Errorf("with a quoted adapter path: %q", c)
 	}
+	// knowledge/decisions/light-guardrails.md: hooks remind and never block,
+	// so a blank adapter command the schema lets through still gets a
+	// reminder rather than a crashed hook.
+	blank := open(t, "commands:\n  build: \"true\"\ndebug:\n  adapter: { run: '   ', transport: stdio }\n  launch: { program: x }\n")
+	if c := blank.SessionStart(hookio.Input{}).Context; !strings.Contains(c, "debug section") {
+		t.Errorf("with a blank adapter command: %q", c)
+	}
 }
 
 // A snapshot tool that approves by command names no protected path, so the
