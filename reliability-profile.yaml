@@ -83,3 +83,25 @@ corrections:
     found: "go install built it with go1.26.9 (its own go.mod minimum), and it refuses modules targeting go1.27: the Go language version used to build golangci-lint is lower than the targeted Go version"
     decision: "install with GOTOOLCHAIN=go1.27.2 go install ...; CI installs from the go.mod toolchain"
     date: 2026-10-17
+
+# reliab debug run | attach | probe (knowledge/decisions/debug-adapter-seam.md):
+# delve's DAP server on a loopback port. --set program=./internal/<pkg>
+# --set test=<TestName> name what to run.
+debug:
+  adapter:
+    run: dlv dap --listen=127.0.0.1:{port}
+    transport: tcp
+    ready: "DAP server listening"
+  launch:
+    mode: test
+    program: "{program}"
+    args: ["-test.run", "^{test}$", "-test.count=1"]
+    # Program output as DAP output events, in order with the stops.
+    outputMode: remote
+    # The debug build goes under .reliab/, which git and report freshness ignore.
+    output: "{root}/.reliab/debug/__debug_bin"
+  attach:
+    mode: local
+    processId: "{pid}"
+  source_root: .
+  notes: "delve builds without optimizations itself (-gcflags=all=-N -l), so locals are complete"
