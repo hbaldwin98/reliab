@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -198,6 +199,56 @@ func TestRunErrors(t *testing.T) {
 			}
 			if got := read(t, out); len(got) != 0 {
 				t.Fatalf("findings = %+v, want none", got)
+			}
+		})
+	}
+}
+
+// docs/adapters.md: an adapter that read its tool's output writes the file
+// and exits 0; one that could not writes none and exits nonzero. The
+// decision (knowledge/decisions/consumer-contracts.md) has a run narrowed by
+// RELIAB_SCOPE report no dropped contract.
+func TestMainExitStatus(t *testing.T) {
+	if args := os.Getenv("PACT_ADAPTER_ARGS"); args != "" {
+		os.Args = append([]string{"reliab-adapter-pact"}, strings.Split(args, "|")...)
+		main()
+		return
+	}
+	only := t.TempDir()
+	testrepo.Write(t, only, "checkout-orders.json", mustRead(t, filepath.Join(accepted, "checkout-orders.json")))
+	notPact := t.TempDir()
+	testrepo.Write(t, notPact, "x.json", `{}`)
+	for _, c := range []struct {
+		name, pending, scope string
+		exit, findings       int
+	}{
+		{"whole run, billing dropped", only, "", 0, 1},
+		{"scoped run", only, "internal/orders", 0, 0},
+		{"not a pact", notPact, "", 1, -1},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			out := filepath.Join(t.TempDir(), "contracts.json")
+			cmd := exec.Command(os.Args[0], "-test.run=^TestMainExitStatus$")
+			cmd.Env = append(os.Environ(), "RELIAB_SCOPE="+c.scope,
+				"PACT_ADAPTER_ARGS="+strings.Join([]string{"-exit", "0", c.pending, accepted, out}, "|"))
+			err := cmd.Run()
+			got := 0
+			if e, ok := err.(*exec.ExitError); ok {
+				got = e.ExitCode()
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			if got != c.exit {
+				t.Fatalf("exit %d, want %d", got, c.exit)
+			}
+			if c.findings < 0 {
+				if _, err := os.Stat(out); !os.IsNotExist(err) {
+					t.Errorf("findings written on error: %v", err)
+				}
+				return
+			}
+			if n := len(read(t, out)); n != c.findings {
+				t.Errorf("findings = %d, want %d", n, c.findings)
 			}
 		})
 	}
