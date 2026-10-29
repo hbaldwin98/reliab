@@ -41,6 +41,13 @@ builds:
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
     ldflags: [-s -w]
+  - id: adapter-pact
+    main: ./cmd/adapters/pact
+    binary: reliab-adapter-pact
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ldflags: [-s -w]
   - id: adapter-verify
     main: ./cmd/adapters/verify
     binary: reliab-adapter-verify

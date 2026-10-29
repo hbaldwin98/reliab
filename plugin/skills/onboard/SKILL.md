@@ -1,6 +1,6 @@
 ---
 name: onboard
-description: Adopt reliab in the current repository (stage S0) - write the profile, inventory the tests, probe each tool role T1 to T15 on the real code, configure each tool to run fast here, wire commands and tiers within budget, and stop at the S0 gate with a report for the person. Use when asked to onboard, adopt, set up, or install reliab in a repository, or to fill in reliability-profile.yaml.
+description: Adopt reliab in the current repository (stage S0) - write the profile, inventory the tests, probe each tool role T1 to T16 on the real code, configure each tool to run fast here, wire commands and tiers within budget, and stop at the S0 gate with a report for the person. Use when asked to onboard, adopt, set up, or install reliab in a repository, or to fill in reliability-profile.yaml.
 argument-hint: [greenfield | maintained | legacy]
 ---
 
@@ -136,7 +136,7 @@ runs.
 
 ## 5. Probe each role
 
-For each role T1 to T15, in this order: find the tool in use (or the
+For each role T1 to T16, in this order: find the tool in use (or the
 ecosystem's usual one, if none is), wire its command, probe it, and record
 the outcome. A probe has two halves: a real run on this repository through
 reliab, and a deliberate failure (in a scratch worktree) that reliab turns
@@ -152,6 +152,7 @@ produced a finding through reliab is not verified.
 | T5 in-process host | (inside `unit` or `integration_tests`) | an existing test starts the application in-process; name it |
 | T6 typed client | (inside `unit` or `integration_tests`) | an existing test calls the application through its own request types; name it |
 | T7 API fuzzing | `api_fuzz` | the fuzzer runs from the API's spec against a local instance; a failure carries a reproducer |
+| T16 consumer contracts | `contracts` | the tests write each contract to a pending directory under `.reliab/out`, never the committed one; through `reliab-adapter-pact`, a planted change to an expected response becomes a labelled finding at the committed contract, and an unchanged run gives none |
 | T15 fuzzing | `fuzz` | `{fuzz_seconds}` (or `RELIAB_FUZZ_SECONDS`) reaches every target and bounds the run; a planted crash becomes a finding with its saved input, and a re-run replays it; `0` replays the corpus only |
 | T8 network faults | `faults_http` | an injected fault between the application and a store reaches a test |
 | T9 HTTP stubs | `faults_http` | a scripted failure from a stubbed dependency reaches a test |
@@ -173,6 +174,16 @@ T15 is reliab's own role, not the paper's: coverage-guided fuzzing of code
 that takes untrusted bytes (parsers, decoders, protocol readers). Mark it
 not applicable when no such code exists. Its saved crashing inputs are
 oracles: add their directory to `protected_paths`.
+
+T16 is reliab's own role too: contracts recording what this repository
+needs from the services it calls that the same organisation owns (Pact).
+Ask the person which services those are; mark it not applicable when there
+are none, or when contracts are not wanted. The committed contracts are
+oracles: add their directory to `protected_paths`. Clear the pending
+directory before each run and run every contract test, never `{impacted}`:
+Pact merges into a file already there, and a contract no test wrote reads
+as dropped. Verifying contracts against a provider and publishing them to a
+broker belong to the provider's repository and to CI, not this profile.
 
 T13 (shadow experiments) needs a planned rewrite and production reads; it is
 almost always `applicable: false` at S0.
@@ -201,7 +212,8 @@ can classify problem by problem), or write a format reliab does not
 read, need an adapter that writes reliab's findings format (`format: findings`).
 reliab ships these beside its binary and puts them on PATH for profile
 commands: `reliab-adapter-cargo-mutants`, `reliab-adapter-golangci-lint`,
-`reliab-adapter-gremlins`, `reliab-adapter-insta`, and
+`reliab-adapter-gremlins`, `reliab-adapter-insta`,
+`reliab-adapter-pact` (Pact consumer contracts), and
 `reliab-adapter-verify` (Verify snapshots).
 Each prints its usage with `-h`; outside a profile command they sit beside
 the binary, in `~/.cache/reliab/<version>/` for a release. Prefer one that fits over
@@ -362,7 +374,7 @@ Give the person:
 
 1. **Profile**: starting condition, paths, protected oracles and who
    approves them, and the files you wrote or changed.
-2. **Roles**: a table of T1 to T15: filled (tool, version, the probe and its
+2. **Roles**: a table of T1 to T16: filled (tool, version, the probe and its
    finding), not applicable (reason), or corrected (what failed).
 3. **Timings**: each command's time, before and after the speed options you
    kept, the inner and prepr tiers' totals against their budgets, and what

@@ -42,8 +42,8 @@ drive it through the plugin's skills.
    starting condition, which files are protected oracles, who approves
    them), runs `init` if you have not, inventories the test projects, re-runs
    the suite to list flaky tests, and fills each tool role T1 to T14 only
-   after a probe ran here and reliab read its output (T15, fuzzing, is
-   reliab's own and optional); anything else is marked
+   after a probe ran here and reliab read its output (T15, fuzzing, and
+   T16, consumer-driven contracts, are reliab's own and optional); anything else is marked
    not applicable with a reason or recorded under `corrections`. It wires
    the commands and tiers (inner under 5 minutes), configuring each tool for
    speed here (diff-only mutation, job counts, fuzz time boxes), runs `reliab doctor` and
@@ -143,8 +143,9 @@ For any other tool, a profile command runs the tool and then an adapter that
 writes reliab's findings format (`schemas/findings.schema.json`), and sets
 `format: findings`. An adapter is any program; reliab ships
 `reliab-adapter-cargo-mutants`, `reliab-adapter-golangci-lint`,
-`reliab-adapter-gremlins`, `reliab-adapter-insta`, and `reliab-adapter-verify` (snapshot diffs labelled
-additive-only or values-changed) beside its binary and puts them on PATH for
+`reliab-adapter-gremlins`, `reliab-adapter-insta`, `reliab-adapter-verify` (snapshot diffs labelled
+additive-only or values-changed), and `reliab-adapter-pact` (consumer contracts
+labelled the same way) beside its binary and puts them on PATH for
 profile commands. Adapters share reliab's rules through helpers:
 `reliab snapdiff <accepted> <pending>` labels a snapshot change,
 `reliab changed-lines` prints the lines changed since the base, and Go

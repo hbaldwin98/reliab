@@ -103,7 +103,8 @@ repo-relative file and must add up to `mutants`. Every survived or
 not-covered mutant is also a finding.
 
 An adapter reads a snapshot tool's pending files and never accepts or
-writes a snapshot: that is a person's decision.
+writes a snapshot: that is a person's decision. The same holds for
+contracts a consumer's tests record (`reliab-adapter-pact`).
 
 ## Helpers
 
@@ -121,7 +122,7 @@ These keep adapters agreeing with reliab, from any language:
   `reliab verify` reads them).
 - `reliab verify` puts its own directory first on PATH for profile
   commands, so the adapters reliab ships (`reliab-adapter-cargo-mutants`,
-  `-golangci-lint`, `-gremlins`, `-insta`, `-verify`) and `reliab` itself are always found.
+  `-golangci-lint`, `-gremlins`, `-insta`, `-pact`, `-verify`) and `reliab` itself are always found.
   Their source in `cmd/adapters/` is a set of worked examples.
 
 ## Check a findings file

@@ -1,5 +1,6 @@
 # Example profile for a made-up Go service: an orders HTTP API backed by
-# PostgreSQL, with a client package other services import. Its shape follows
+# PostgreSQL, with a client package other services import, that calls an
+# inventory service the same organisation runs. Its shape follows
 # reliab's own profile. Tools, versions, and dates are illustrative: fill
 # yours by probing them on your codebase (stage S0, the onboard skill).
 schemaVersion: 0.1.0
@@ -11,12 +12,13 @@ runtime:
 
 paths:
   product: ["cmd/**", "internal/**", "client/**", "api/**"]
-  tests: ["**/*_test.go", "**/testdata/**", "scripts/reliab/**"]
+  tests: ["**/*_test.go", "**/testdata/**", "scripts/reliab/**", "pacts/**"]
   ignore: ["docs/**", "**/*.md"]
 
-# Golden files and the saved regression inputs are oracles; the OpenAPI
-# spec is hand-maintained. The profile guards itself once committed.
-protected_paths: ["reliability-profile.yaml", "**/testdata/golden/**", "**/testdata/rapid/**", "**/testdata/fuzz/**", "api/openapi.yaml", "reliab/mutation-baseline.json"]
+# Golden files, the saved regression inputs, and the approved contracts with
+# the inventory service are oracles; the OpenAPI spec is hand-maintained.
+# The profile guards itself once committed.
+protected_paths: ["reliability-profile.yaml", "**/testdata/golden/**", "**/testdata/rapid/**", "**/testdata/fuzz/**", "api/openapi.yaml", "pacts/**", "reliab/mutation-baseline.json"]
 
 # The mutation baseline: scores per area that changed code must not fall
 # below (baseline first, then hold the line). A person records it from a
@@ -45,6 +47,7 @@ roles:
   T13: { applicable: false, reason: "no read path slated for rewrite" }
   T14: { tool: golangci-lint, version: v2.15.0, verified: 2026-10-18, notes: "its JSON through reliab-adapter-golangci-lint, so each issue is its own finding" }
   T15: { tool: go test -fuzz, version: go1.27, verified: 2026-10-18, notes: "one target per run, so scripts/reliab/fuzz.sh splits {fuzz_seconds} among the Fuzz functions; crashers land in testdata/fuzz, which unit replays" }
+  T16: { tool: pact-go, version: v2.4.1, verified: 2026-10-29, notes: "the inventory client's tests read their pact directory from PACT_DIR; approved pacts live in pacts/" }
 
 commands:
   build: go build ./...
@@ -95,6 +98,15 @@ commands:
     format: junit
     output: .reliab/out/e2e.xml
     relevant_when: ["cmd/**", "internal/**", "client/**", "deploy/**", "go.mod", "go.sum"]
+  # What orders needs from the inventory service, recorded by the inventory
+  # client's tests against a Pact mock into a cleared pending directory and
+  # compared with the approved contracts in pacts/. Every contract test
+  # runs, never {impacted}: a contract no test wrote reads as dropped.
+  contracts:
+    run: rm -rf .reliab/out/pacts; PACT_DIR="$PWD/.reliab/out/pacts" gotestsum --junitfile .reliab/out/contracts.xml -- -tags pact ./internal/inventory/...; reliab-adapter-pact -exit $? -junit .reliab/out/contracts.xml .reliab/out/pacts pacts .reliab/out/contracts.json
+    format: findings
+    output: .reliab/out/contracts.json
+    relevant_when: ["internal/inventory/**", "pacts/**", "go.mod", "go.sum"]
   # gremlins per changed package, then reliab-adapter-gremlins -base keeps
   # the mutants on lines changed since the base. Two workers: with one per
   # CPU, tests time out under load and mutants read as killed.

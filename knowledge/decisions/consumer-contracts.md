@@ -50,11 +50,17 @@ provider's repository.
   versions change with no change to the contract), interactions sorted by
   description and provider state, JSON indented one field per line. It
   labels each difference with `pkg/snapdiff` and writes one finding per
-  changed contract, named by consumer and provider. A pending contract with
-  no accepted one is additive-only; an accepted one no test wrote any more
-  is a values-changed finding, since the consumer stopped needing that
-  provider or the tests stopped covering it. With `-junit` it keeps failing
-  tests, as reliab-adapter-insta does.
+  changed contract, named by consumer and provider and located at the
+  accepted file. A pending contract with no accepted one is additive-only.
+  An accepted one no test wrote is a values-changed finding, since the
+  consumer stopped needing that provider or the tests stopped covering it,
+  but only after a clean, whole run: a failing test may have kept Pact from
+  writing it, and a run narrowed by `--scope` (`RELIAB_SCOPE`) writes only
+  some. A clean run that wrote no contract while accepted ones exist is an
+  error, since the pact directory points elsewhere. With `-junit` it keeps
+  failing tests, as reliab-adapter-insta does. The command clears the
+  pending directory first, because Pact merges into a file already there,
+  and runs every contract test, never `{impacted}`.
 - **The labels read the other way round from snapshots.** For a snapshot,
   additive-only is the quick approval. For a contract, an added interaction
   or field is a new demand on the provider, which its team must build;

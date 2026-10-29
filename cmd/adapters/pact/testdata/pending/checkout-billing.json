@@ -1,0 +1,15 @@
+{
+  "consumer": { "name": "checkout" },
+  "provider": { "name": "billing" },
+  "interactions": [
+    {
+      "type": "Synchronous/HTTP",
+      "key": "9f8e7d6c",
+      "description": "a charge for order 42",
+      "providerStates": [{ "name": "a card on file" }],
+      "request": { "method": "POST", "path": "/charges", "body": { "content": { "order": 42, "amount": 1999 } } },
+      "response": { "status": 201, "body": { "content": { "state": "authorized" } } }
+    }
+  ],
+  "metadata": { "pactSpecification": { "version": "4.0" }, "pactRust": { "ffi": "0.4.26" } }
+}

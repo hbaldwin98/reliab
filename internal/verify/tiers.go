@@ -22,13 +22,13 @@ type Tier struct {
 var defaults = map[string]Tier{
 	"inner": {
 		Name: "inner", BudgetSeconds: 300, PropertyCases: 100,
-		Run: []string{"build", "analyzers", "corpus", "unit", "properties", "spec_checks"},
+		Run: []string{"build", "analyzers", "corpus", "unit", "properties", "spec_checks", "contracts"},
 	},
 	"prepr": {
 		Name: "prepr", BudgetSeconds: 900, PropertyCases: 1000, FuzzSeconds: 120,
 		Run: []string{
 			"build", "analyzers", "corpus", "unit", "integration_tests", "e2e", "snapshots", "properties",
-			"spec_checks", "model_tests", "api_fuzz", "fuzz", "faults_db", "faults_http", "store_tests",
+			"spec_checks", "contracts", "model_tests", "api_fuzz", "fuzz", "faults_db", "faults_http", "store_tests",
 			"mutation_changed", "replay_sampled", "coverage",
 		},
 	},
@@ -36,7 +36,7 @@ var defaults = map[string]Tier{
 		Name: "nightly", BudgetSeconds: 0, PropertyCases: 10000, FuzzSeconds: 1800,
 		Run: []string{
 			"build", "analyzers", "corpus", "unit", "integration_tests", "e2e", "snapshots", "properties",
-			"spec_checks", "model_tests", "api_fuzz", "fuzz", "faults_db", "faults_http", "store_tests",
+			"spec_checks", "contracts", "model_tests", "api_fuzz", "fuzz", "faults_db", "faults_http", "store_tests",
 			"mutation_full", "replay_full", "coverage",
 		},
 	},
@@ -83,6 +83,7 @@ var commandRole = map[string]string{
 	"mutation_full":    "T4",
 	"api_fuzz":         "T7",
 	"fuzz":             "T15",
+	"contracts":        "T16",
 	"faults_http":      "T9",
 	"faults_db":        "T10",
 	"store_tests":      "T11",

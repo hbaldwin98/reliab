@@ -19,18 +19,21 @@ func TestShippedProfilesLoad(t *testing.T) {
 				t.Fatal(err)
 			}
 			// Every paper role T1-T14 is filled or marked; T15
-			// (knowledge/roles/t15-fuzzing.md) is optional.
+			// (knowledge/roles/t15-fuzzing.md) and T16
+			// (knowledge/roles/t16-consumer-contracts.md) are optional.
 			for i := 1; i <= 14; i++ {
 				if _, ok := p.Roles["T"+strconv.Itoa(i)]; !ok {
 					t.Errorf("no role T%d", i)
 				}
 			}
 			want := 14
-			if _, ok := p.Roles["T15"]; ok {
-				want = 15
+			for _, r := range []string{"T15", "T16"} {
+				if _, ok := p.Roles[r]; ok {
+					want++
+				}
 			}
 			if len(p.Roles) != want {
-				t.Errorf("roles = %d, want T1-T14 and optionally T15", len(p.Roles))
+				t.Errorf("roles = %d, want T1-T14 and optionally T15 and T16", len(p.Roles))
 			}
 		})
 	}

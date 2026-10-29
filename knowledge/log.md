@@ -1,6 +1,7 @@
 # Update Log
 
 ## 2026-10-29
+* **Update**: [consumer-contracts](/decisions/consumer-contracts.md) is built: `contracts` in the schema and every tier's defaults (T16), `reliab-adapter-pact` (`cmd/adapters/pact`, shipped in the release archive), route advice that reads a contract's labels as demands on the provider, a T16 step in the onboard skill, and a Pact contracts command in the Go example profile. Settled while building: a dropped contract is reported only after a clean, unscoped run, and a clean run that wrote no contract while accepted ones exist is an error.
 * **Creation**: Added [consumer-contracts](/decisions/consumer-contracts.md) (draft) and the role [T16](/roles/t16-consumer-contracts.md): a `contracts` command id in every tier runs consumer tests against mocks of owned services and writes their contracts under `.reliab/out`; `reliab-adapter-pact` labels each against its committed, protected contract, and a person approves a change. Consumer side only: provider verification and broker publishing stay outside reliab.
 
 ## 2026-10-21

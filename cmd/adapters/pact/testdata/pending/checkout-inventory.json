@@ -1,0 +1,12 @@
+{
+  "consumer": { "name": "checkout" },
+  "provider": { "name": "inventory" },
+  "interactions": [
+    {
+      "description": "a stock check for sku A1",
+      "request": { "method": "GET", "path": "/stock/A1" },
+      "response": { "status": 200, "body": { "sku": "A1", "available": 3 } }
+    }
+  ],
+  "metadata": { "pactSpecification": { "version": "2.0.0" } }
+}

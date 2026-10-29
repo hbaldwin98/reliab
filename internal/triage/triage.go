@@ -293,6 +293,11 @@ const (
 	snapshotLines  = 24
 )
 
+// contractAction replaces snapshotAction for a contract a consumer's tests
+// recorded (knowledge/decisions/consumer-contracts.md). Its labels read the
+// other way round: an addition is a new demand on the provider.
+const contractAction = "a contract this service records with a provider changed. Additive only means it now needs more from the provider (an interaction or field its team must build); values changed means an expectation changed or was dropped. Your change meant to change what it needs: reliab findings classify %[1]s --kind characterization-diff --reason \"<what it needs now and why>\", copy the pending contract over the accepted one, commit it, list it as a question, and stop; a person approves it with reliab approve and gives it to the provider's team (R2). It did not: a side effect of your change; reliab findings classify %[1]s --kind new-code-defect --reason \"...\" and fix product code, never the contract"
+
 func isMutation(f report.Finding) bool { return profile.IsMutation(f.Command) }
 
 // generatedCommands run property and fuzz tests: their failing inputs are
@@ -350,6 +355,9 @@ func Route(w io.Writer, root string) (int, error) {
 		}
 		if f.Kind == report.KindUnclassified && f.Diff != "" {
 			action = snapshotAction
+			if f.Command == "contracts" {
+				action = contractAction
+			}
 		}
 		if strings.Contains(action, "%") {
 			action = fmt.Sprintf(action, f.ID)

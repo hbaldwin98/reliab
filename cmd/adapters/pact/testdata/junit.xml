@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="checkout contracts" tests="3" failures="1">
+    <testcase classname="orders client" name="cancels an order"/>
+    <testcase classname="billing client" name="charges the card"/>
+    <testcase classname="inventory client" name="reserves stock">
+      <failure message="Pact verification failed">Mock server mismatch: expected PUT /stock/A1/reservations, got POST /stock/A1/reserve</failure>
+    </testcase>
+  </testsuite>
+</testsuites>
