@@ -83,8 +83,9 @@ func TestLabels(t *testing.T) {
 	}
 }
 
-// Metadata, interaction keys, the order of interactions, and formatting are
-// not the contract.
+// knowledge/decisions/consumer-contracts.md: metadata, interaction keys,
+// the order of interactions, and formatting are not the contract, and files
+// pair by consumer and provider, not file name.
 func TestRenderingIsNotAChange(t *testing.T) {
 	acc, cur := t.TempDir(), t.TempDir()
 	testrepo.Write(t, acc, "orders.json", `{
@@ -118,8 +119,9 @@ func mustRead(t *testing.T, path string) string {
 	return string(b)
 }
 
-// An accepted contract no test wrote is reported after a clean, whole run
-// only: a failing test or a scoped run may simply not have written it.
+// knowledge/decisions/consumer-contracts.md: an accepted contract no test
+// wrote is reported after a clean, whole run only: a failing test or a
+// scoped run may simply not have written it.
 func TestDroppedContract(t *testing.T) {
 	only := t.TempDir()
 	testrepo.Write(t, only, "checkout-orders.json", mustRead(t, filepath.Join(accepted, "checkout-orders.json")))
@@ -142,6 +144,9 @@ func TestDroppedContract(t *testing.T) {
 	}
 }
 
+// knowledge/decisions/consumer-contracts.md: with -junit the adapter keeps
+// failing tests, as reliab-adapter-insta does, so a request the mock server
+// did not expect is a finding too.
 func TestJUnitKeepsFailures(t *testing.T) {
 	got := adapt(t, 1, "testdata/junit.xml", pending, accepted, false)
 	if len(got) != 4 {
@@ -153,6 +158,10 @@ func TestJUnitKeepsFailures(t *testing.T) {
 	}
 }
 
+// docs/adapters.md: an adapter whose tool did not run, or whose output is
+// missing or unreadable, writes no file and says why. The decision
+// (knowledge/decisions/consumer-contracts.md) makes a clean run that wrote
+// no contract while accepted ones exist one of those.
 func TestRunErrors(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "absent")
 	empty := t.TempDir()
@@ -254,8 +263,9 @@ func TestMainExitStatus(t *testing.T) {
 	}
 }
 
-// The whole path: the adapter's file read by reliab verify as the contracts
-// command, then shown by reliab report route with the contract advice.
+// knowledge/decisions/consumer-contracts.md: the whole path, the adapter's
+// file read by reliab verify as the contracts command, then shown by reliab
+// report route with the contract advice.
 func TestRouteShowsContractAdvice(t *testing.T) {
 	findingsFile, err := filepath.Abs(filepath.Join(t.TempDir(), "contracts.json"))
 	if err != nil {

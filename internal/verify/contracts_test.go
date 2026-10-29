@@ -2,6 +2,8 @@ package verify
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,7 +18,9 @@ import (
 func TestContractsRunInEveryTier(t *testing.T) {
 	root := repo(t, "commands:\n  contracts: echo ran > contracts.txt\n")
 	for _, tier := range TierNames {
-		_ = os.Remove(filepath.Join(root, "contracts.txt"))
+		if err := os.Remove(filepath.Join(root, "contracts.txt")); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			t.Fatal(err)
+		}
 		verify(t, root, tier)
 		if _, err := os.Stat(filepath.Join(root, "contracts.txt")); err != nil {
 			t.Errorf("%s: contracts did not run: %v", tier, err)
