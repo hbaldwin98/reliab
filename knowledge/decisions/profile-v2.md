@@ -53,7 +53,7 @@ commands:
     pr:       dotnet stryker --since:main
     audit:    dotnet stryker
     targeted: dotnet stryker --mutate {files}
-    output: { file: .reliab/mutation.json, parse: stryker }
+    output: { file: .reliab/mutation.json, parse: mutation-report }
     after: [unit]
     exclusive: true
     timeout: 30m
@@ -64,7 +64,7 @@ commands:
 | `about` | What the command checks and what its failure means. Shown by `--plan` and in the report; written for an LLM. |
 | `change`, `pr`, `audit` | The literal line run in that context. Absent: the command does not run in that context. |
 | `targeted` | The line run when `--target` is given. Absent: the context line runs and results are filtered. |
-| `output` | A file the tool writes and the adapter that parses it into findings. Absent: pass/fail from the exit code plus the log. |
+| `output` | A file the tool writes and the parser (`junit`, `trx`, `cobertura`, `mutation-report`, `findings`) that turns it into findings. Absent: pass/fail from the exit code plus the log. |
 | `after` | Commands that must pass first. |
 | `exclusive` | Runs alone; nothing else runs at the same time. |
 | `timeout` | Per-command limit. |
@@ -89,9 +89,14 @@ and `pr`, everything for `audit`.
 reliab resolves a target to files, line ranges, owning projects, and the
 matching tests. A target acts twice:
 
-1. **Narrow the run** when the command has a `targeted` line. Three
-   placeholders, each an already-resolved list: `{files}`, `{projects}`,
-   `{tests}`. No other placeholders exist.
+1. **Narrow the run.** Any line may use three placeholders, each an
+   already-resolved list of the target: `{files}`, `{projects}`, `{tests}`.
+   No other placeholders exist. `change: go test {projects}` tests the
+   changed packages. With `--target`, a `targeted` line, when present,
+   replaces the context line for tools that take a target differently.
+   A placeholder that resolves empty skips the command (an empty list
+   would make most tools run everything); a placeholder in a line whose
+   target is everything is an error.
 2. **Filter the results** always: findings and coverage outside the
    target's files and line ranges are dropped from the report. This is how
    function coverage works when no tool targets a function.

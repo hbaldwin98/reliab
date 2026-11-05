@@ -35,6 +35,7 @@ func newRoot() *cobra.Command {
 		SilenceErrors: true,
 	}
 	root.AddCommand(
+		newRunCmd(),
 		newProfileCmd(),
 		newVerifyCmd(),
 		newReportCmd(),

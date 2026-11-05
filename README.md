@@ -1,237 +1,289 @@
 # reliab
 
-A stack-neutral testing CLI and Claude Code plugin: one tool that runs a
-project's tests in tiers (the edit loop, before a merge, nightly) and, on
-demand, mutation, property, fuzz, snapshot, and end-to-end runs, turning
-each tool's output into findings. Use it from your shell, or let an agent
-drive it through the plugin's skills.
+A testing CLI that runs your project's existing test tools, in the right
+order and on the right scope, and turns their output into one findings
+format. Use it from your shell, in CI, or let an agent drive it through the
+Claude Code plugin.
 
-- What reliab is and why: [knowledge/overview.md](knowledge/overview.md)
-- Design decisions: [knowledge/decisions/](knowledge/decisions/)
-- v0 scope: [knowledge/decisions/v0-scope.md](knowledge/decisions/v0-scope.md)
+reliab does not test anything itself. It decides what to run, runs it, and
+reads the results.
 
-## Adopt reliab in a repository
+## Testing, in one page
 
-1. **Install** the plugin in Claude Code (see
-   [Install the plugin](#install-the-plugin-claude-code)). Its launcher puts
-   `reliab` on the agent's PATH. For your own shell or CI, install the
-   binary and the adapters into `~/.reliab/bin` (then add it to your PATH):
+There are two kinds of test: **checks**, which find bugs in the code, and
+**meta-checks**, which measure how good the tests are.
 
-   ```sh
-   curl -fsSL https://raw.githubusercontent.com/hbaldwin98/reliab/main/scripts/install.sh | sh -s -- 0.4.0
-   ```
+**Checks: does the code work?**
 
-   ```powershell
-   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/hbaldwin98/reliab/main/scripts/install.ps1))) -Version 0.4.0
-   ```
+| Type | Question | Cost | Example tools |
+|---|---|---|---|
+| Static analysis | Does it look wrong without running it? | seconds | golangci-lint, Roslyn analyzers, ESLint |
+| Unit | Does one function do what it should? | seconds | go test, xUnit, Jest |
+| Property | Does a rule hold for *any* input, not only the examples I picked? | seconds to minutes | rapid, FsCheck, fast-check |
+| Snapshot / golden | Did the output change from the approved version? | seconds | insta, Verify, golden files |
+| Integration | Do the parts work together, with a real database or queue? | minutes | Testcontainers |
+| Contract | Do two services still agree on the API between them? | minutes | Pact |
+| End-to-end | Does a real user flow work through the whole system? | minutes, often flaky | Playwright |
+| Fuzz | Does random or malformed input crash it? | open-ended | go fuzz, libFuzzer, Schemathesis |
+| Fault injection | Does it behave when a dependency is slow or down? | minutes | Toxiproxy |
 
-   Check it with `reliab version`.
-2. **Initialise** the repository:
+**Meta-checks: are the tests any good?**
 
-   ```sh
-   reliab profile init --starting-condition maintained   # greenfield | maintained | legacy
-   ```
+| Type | Question | Cost |
+|---|---|---|
+| Coverage | Which lines did the tests run at all? | same as the test run |
+| Mutation | If I break a line, does any test notice? | slow: about one test run per mutant |
 
-   `init` writes a `reliability-profile.yaml` skeleton, adds `.reliab/` to
-   `.gitignore`, merges the plugin and its marketplace into
-   `.claude/settings.json`, adds the testing rules to `AGENTS.md`, and pins
-   the version in `.reliab-version`. It keeps what is already there and is
-   safe to re-run after changing `protected_paths`.
-3. **Onboard** (stage S0): in a Claude Code session in the repository, run
-   `/reliab:onboard`. The agent asks only what the code cannot tell (the
-   starting condition, which files are protected oracles, who approves
-   them), runs `init` if you have not, inventories the test projects, re-runs
-   the suite to list flaky tests, and fills each tool role T1 to T14 only
-   after a probe ran here and reliab read its output (T15, fuzzing, and
-   T16, consumer-driven contracts, are reliab's own and optional); anything else is marked
-   not applicable with a reason or recorded under `corrections`. It wires
-   the commands and tiers (inner under 5 minutes), configuring each tool for
-   speed here (diff-only mutation, job counts, fuzz time boxes), runs `reliab doctor` and
-   both tiers, and stops with an S0 report: what is filled and why not,
-   timings, flaky tests, and open questions. It never edits product code or
-   existing tests. Complete example profiles for made-up Go, Rust, and .NET
-   services are in [templates/examples/](templates/examples/).
-4. **Commit** the profile and the files `init` wrote, then run the probes on
-   a CI agent and wire the [CI](#ci) commands; that finishes S0.
+Coverage says a line *ran*. Mutation says a test *checks* it: a line can be
+fully covered while no test would notice it changing.
 
-Day to day the agent runs, guided by the plugin's skills and hooks:
+The usual layering is to run cheap checks often and expensive ones rarely:
+
+- **after an edit:** lint, unit tests and properties, on what you touched;
+- **before a merge:** add integration, contract and snapshot tests, and
+  mutation testing on the changed lines;
+- **auditing existing code:** add full mutation runs, fuzzing, end-to-end
+  tests and fault injection.
+
+## Where reliab fits
+
+1. **One file says what to run.** `reliab.yaml` lists each command, the exact
+   line it runs in each context, and a sentence saying what its failure
+   means.
+2. **Contexts pick the depth.** `change`, `pr` and `audit` are the three
+   layers above.
+3. **Targets pick the scope:** what you changed, a project, a folder, a file,
+   or one function. A tool that can narrow its run gets the narrowed list,
+   and findings outside the target are dropped for every tool. That is how
+   "coverage of just `GetUser`" works when no coverage tool targets a
+   function.
+4. **A scheduler gets the order right.** Independent commands run in
+   parallel. A command waits for what it depends on, and does not run if
+   that failed. An expensive command can claim the machine for itself.
+5. **One findings format.** JUnit, TRX, Cobertura, mutation reports and
+   linter output all become the same shape, so you, CI or an agent read one
+   report.
+6. **`--plan` explains a run before it starts:** what will run, in what
+   order, and why.
+
+reliab is only as fast as the tools it calls. What it saves is the work you
+didn't need and the runs you would have thrown away.
+
+## Install
 
 ```sh
-reliab verify --tier inner      # when a change is done, before stopping (budget 5 min)
-reliab verify --tier prepr      # before a branch merges into main (budget 15 min)
-reliab report route             # what to do about each finding
-reliab findings classify <id> --kind <kind> --reason "..."
+curl -fsSL https://raw.githubusercontent.com/hbaldwin98/reliab/main/scripts/install.sh | sh -s -- 0.4.0
 ```
 
-To test one area on demand, name the commands and the paths:
-
-```sh
-reliab verify --only mutation_full --scope internal/report --tier prepr
-reliab verify --only fuzz --scope internal/parser --tier nightly   # fuzz_seconds: 120 prepr, 1800 nightly
-reliab verify --only e2e --tier prepr
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/hbaldwin98/reliab/main/scripts/install.ps1))) -Version 0.4.0
 ```
 
-This runs only those commands, under the tier's budget, with `{impacted}`,
-`{scope}`, and `RELIAB_SCOPE` narrowed to the paths, and writes a separate
-on-demand report that never satisfies the stop or push hooks.
+This installs `reliab` and its adapters into `~/.reliab/bin`; add that to
+your PATH and check with `reliab version`. Commands run under a POSIX `sh`;
+on Windows that is Git for Windows' shell.
 
-To name the tests that guard a change, in any tier:
+## reliab.yaml
 
-```sh
-reliab verify --tier prepr --tests "<one test run, in the runner's syntax>" --mutation-tests A,B
+At the repository root. It holds commands and nothing else:
+
+```yaml
+version: 1
+base: origin/main          # what "changed" is measured from
+
+commands:
+  build:
+    about: Compile everything. If this fails, nothing else is worth running.
+    change: dotnet build
+    pr:     dotnet build
+    audit:  dotnet build
+
+  unit:
+    about: >
+      Unit tests with coverage. A failing test is a product bug (fix the
+      code) or a wrong test (fix the test; never loosen an assertion).
+    change:   dotnet test {tests}
+    pr:       dotnet test --collect "XPlat Code Coverage" --logger trx
+    audit:    dotnet test --collect "XPlat Code Coverage" --logger trx
+    output: { file: "**/TestResults/*.trx", parse: trx }
+    after: [build]
+
+  mutation:
+    about: >
+      Mutation testing. Slow. A surviving mutant means no test checks that
+      line's behavior: add a test that does, or say why none can.
+    pr:       dotnet stryker --since:main
+    audit:    dotnet stryker
+    targeted: dotnet stryker --mutate {files}
+    output: { file: StrykerOutput/**/mutation-report.json, parse: mutation-report }
+    after: [unit]
+    exclusive: true
+    timeout: 30m
 ```
 
-The profile's commands receive them as `{tests}`, `{mutation_tests}`,
-`RELIAB_TESTS`, and `RELIAB_MUTATION_TESTS`, the report records them, and a
-command with `needs: [tests]` leaves the run incomplete until they are named.
+| Key | Meaning |
+|---|---|
+| `about` | What the command checks and what a failure means. Required. Shown by `--plan` and next to failures. |
+| `change`, `pr`, `audit` | The line run in that context. Leave one out and the command does not run there. |
+| `targeted` | Runs instead of the context line when you pass `--target`, for tools that take a target differently. |
+| `output` | A file (or glob) the tool writes, and the parser that reads it: `junit`, `trx`, `cobertura`, `mutation-report`, or `findings`. Without it, pass or fail comes from the exit code and the log. |
+| `after` | Commands that must pass first. |
+| `exclusive` | Runs alone: nothing else runs at the same time. |
+| `timeout` | A limit such as `90s` or `30m`. |
 
-The plugin's `mutation`, `properties`, and `fuzz` skills drive the whole
-loop for one area. `reliab docs overview` prints what to run when, for an
-agent asked to explain reliab in a repository without this README.
+A line may use three placeholders, each a list reliab has already worked out
+for the target:
 
-Around a refactor or migration, capture an area's behavior, change it, and
-compare; the profile's `characterize` command writes the transcripts:
+- `{files}`: the source files;
+- `{projects}`: the projects that own them (a `.csproj`, a Go package, a
+  directory with `package.json`, `Cargo.toml` or `pyproject.toml`);
+- `{tests}`: their tests (test projects that reference those projects, a Go
+  package's tests, `foo.test.ts` beside `foo.ts`, `test_foo.py` beside
+  `foo.py`).
+
+When a placeholder a line uses would be empty, the command is skipped
+rather than run with nothing, because most tools then run everything.
+Commands also get `RELIAB_CONTEXT`, `RELIAB_BASE`, `RELIAB_TARGET_FILES`,
+`RELIAB_TARGET_PROJECTS` and `RELIAB_TARGET_TESTS` (newline-separated).
+
+## Run
 
 ```sh
-reliab characterize capture --scope crates/service  # before the change
-reliab characterize compare                         # after; each difference is labelled
-reliab characterize discard                         # captures live in .reliab/ and are never committed
+reliab run change --plan     # what would run, in order, and why; runs nothing
+reliab run change            # after an edit: what changed since the base
+reliab run pr                # before a merge
+reliab run audit             # existing code: everything
 ```
 
-The `characterize` skill drives this cycle.
-
-When a test's output does not show a failure's cause, run the test under
-the language's debug adapter. The profile's optional `debug` section names
-the adapter (delve, debugpy, netcoredbg, lldb-dap: any that speaks the
-Debug Adapter Protocol) and its launch arguments; `reliab docs debug` has a
-block for each:
+Point it at something specific with `--target`, as many times as you like:
 
 ```sh
-reliab debug probe                  # the adapter answers; its capabilities
+reliab run audit --target src/Api/Api.csproj          # a project
+reliab run audit --target src/Api/Data/               # a folder
+reliab run pr    --target src/Api/Users.cs            # a file
+reliab run audit --target src/Api/Users.cs#GetUser    # a function (Type.Method works too)
+```
+
+`change` and `pr` default to the files changed since the base, committed or
+not; `audit` defaults to everything. A function target is found by parsing
+the file: Go with its own parser, Python by indentation, and C#, Java,
+TypeScript and other brace languages by a tolerant scanner. A name that
+matches more than one function is an error, not a guess.
+
+The output is one line per command, then each failure's findings and its
+`about`. Full logs are in `.reliab/run/<command>.log`.
+
+```
+pass     build        1.3s
+FAIL     unit         41.2s
+blocked  mutation     unit did not pass
+
+unit: failed (log: .reliab/run/unit.log)
+  - UsersTests.GetUser_ReturnsNotFound src/Api/Users.cs:42
+    Expected 404, got 500
+  about: Unit tests with coverage. ...
+```
+
+Exit codes: `0` everything passed, `1` something failed, `2` a config or
+usage error.
+
+## Tool output and adapters
+
+reliab reads JUnit XML, TRX, Cobertura coverage and mutation-testing-elements
+reports (Stryker and others) directly. For any other tool, run an adapter
+after it that writes reliab's findings format
+(`schemas/findings.schema.json`) and set `parse: findings`. An adapter is
+any program. reliab ships these next to its binary:
+
+- `reliab-adapter-cargo-mutants`
+- `reliab-adapter-golangci-lint`
+- `reliab-adapter-gremlins`
+- `reliab-adapter-insta`
+- `reliab-adapter-verify`: snapshot diffs, labelled additive-only or
+  values-changed
+- `reliab-adapter-pact`: consumer contracts, labelled the same way
+
+Helpers for adapter authors are `reliab snapdiff <accepted> <pending>`,
+`reliab changed-lines`, and the Go packages `pkg/snapdiff` and
+`pkg/findings`. `reliab findings check <file>` reads an adapter's output the
+way a run would, and warns about unstable ids and paths outside the
+repository. The contract and a complete example are in
+[docs/adapters.md](docs/adapters.md) (`reliab docs adapters`).
+
+## Debugging a failure
+
+When a test's output does not show the cause, run it under the language's
+debug adapter (delve, debugpy, netcoredbg, lldb-dap: anything that speaks
+the Debug Adapter Protocol). Its settings live in `reliab-debug.yaml`;
+`reliab docs debug` has a block for each adapter.
+
+```sh
+reliab debug probe
 reliab debug run --set program=./internal/report --set test=TestRouteKinds \
   --break internal/report/route.go:88 --dump 'f' --dump 'len(items)'
 ```
 
-Each stop prints the stack, the locals, and the dumps, and the run writes a
-transcript under `.reliab/debug/`. It is non-interactive: no stepping. The
-`/reliab:diagnose` skill takes a symptom to its cause and a
-failing-then-passing test with it.
-
-Before a branch merges into main, by a PR or locally, and once the change is
-committed, the plugin's `reliab:reviewer` agent re-runs the pre-PR tier in
-a clean worktree, reads the diff, and records a verdict that only it may
-write (`reliab report verdict`); with `require_reviewer_verdict: true` the
-pre-push reminder asks for a pass for the current tree. The PR's evidence section is
-pasted from the report, not written by the agent:
-
-```sh
-reliab report summary           # Markdown for the PR body; --format json for tooling
-```
-
-The `summary` skill drives both.
-
-People decide findings that need a human:
-`reliab findings ack <id> --by human:<name>`.
-
-## Tool output
-
-reliab reads JUnit XML, TRX, and mutation-testing-elements reports directly,
-and counts lines in Cobertura coverage. A command's `output` may be a glob
-when a tool writes one file per project. With `changed_only: true`, mutants
-and coverage are kept to the lines changed since the profile's `base`.
-For any other tool, a profile command runs the tool and then an adapter that
-writes reliab's findings format (`schemas/findings.schema.json`), and sets
-`format: findings`. An adapter is any program; reliab ships
-`reliab-adapter-cargo-mutants`, `reliab-adapter-golangci-lint`,
-`reliab-adapter-gremlins`, `reliab-adapter-insta`, `reliab-adapter-verify` (snapshot diffs labelled
-additive-only or values-changed), and `reliab-adapter-pact` (consumer contracts
-labelled the same way) beside its binary and puts them on PATH for
-profile commands. Adapters share reliab's rules through helpers:
-`reliab snapdiff <accepted> <pending>` labels a snapshot change,
-`reliab changed-lines` prints the lines changed since the base, and Go
-adapters can import `pkg/snapdiff` and `pkg/findings`. The contract, the
-helpers, and a complete example adapter are in
-[docs/adapters.md](docs/adapters.md); `reliab docs adapters` prints it. To
-have an agent write one, run the plugin's `adapter` skill
-(`/reliab:adapter <tool>`): it captures the tool's real output as fixtures, tests the adapter on them, and checks each file with
-`reliab findings check <file>`, which reads it as verify would and warns
-about unstable ids, paths outside the repository, and counts that disagree.
-See [knowledge/decisions/external-adapters.md](knowledge/decisions/external-adapters.md).
+Each stop prints the stack, the locals and the dumps. It is
+non-interactive: there is no stepping.
 
 ## CI
 
-reliab writes no CI configuration. Wire these into whatever CI you use
-(`reliab docs ci` prints the full page for the installed version):
+reliab writes no CI configuration. Call it from whatever CI you use:
 
 ```sh
-reliab verify --tier prepr                       # every push; exit 0 passes
-reliab gate protected --base origin/main         # every PR; exit 1 means a human must approve
-reliab verify --tier nightly                     # on a schedule
-reliab report export --format junit -o report.xml   # or --format sarif
+reliab run pr        # every push or PR
+reliab run audit     # on a schedule
 ```
 
-Install the version pinned in `.reliab-version` with `scripts/install.sh`
-(or `scripts/install.ps1` on Windows without a POSIX shell). They download
+Install the version pinned in `.reliab-version` with `scripts/install.sh`,
+or `scripts/install.ps1` on Windows without a POSIX shell. They download
 from GitHub Releases over HTTPS with no credentials; an authenticated `gh`
-is used instead when present, and is optional. To use a mirror, set
-`RELIAB_DOWNLOAD_URL` (and `RELIAB_TOKEN` if the mirror needs it). `RELIAB_DOWNLOAD_URL` may also be a local directory or a `file://` URL
-holding the archive and `checksums.txt`.
+is used when present. To use a mirror, set `RELIAB_DOWNLOAD_URL` (and
+`RELIAB_TOKEN` if the mirror needs one). It may also be a local directory or
+a `file://` URL holding the archive and `checksums.txt`.
+`reliab docs ci` prints more.
 
-Exit codes: `0` passed and complete, `1` open findings, `2` config error,
-`3` incomplete (the budget ran out, or a command needs tests named).
-
-## Install the plugin (Claude Code)
+## Claude Code plugin
 
 ```
 /plugin marketplace add hbaldwin98/reliab
 /plugin install reliab@reliab
 ```
 
-Repositories set up with `reliab profile init` register the marketplace and
-enable the plugin for everyone who trusts the workspace. The plugin's launcher
-downloads the matching binary into `~/.cache/reliab/<version>/` on first use
-(`$XDG_CACHE_HOME/reliab` when that is set; on Windows under your user
-profile, through Git Bash).
+The plugin's launcher downloads the matching binary into
+`~/.cache/reliab/<version>/` on first use (`$XDG_CACHE_HOME/reliab` when
+that is set). An agent starts with `reliab run <context> --plan`, runs it,
+and acts on the findings.
 
-Every release archive also holds the plugin, so you can load it without the
-marketplace: extract `reliab_<version>_<os>_<arch>.tar.gz` and start Claude
-Code with `claude --plugin-dir <extracted>/plugin`. The launcher still
-installs its version into the cache on first use; set `RELIAB_BIN` to the
-extracted `reliab` binary to run that one instead.
-
-### What the hooks do
-
-The hooks remind and never block. Session start briefs the workflow and
-open findings; a stop with unverified product changes gets one nudge; a push
-or PR gets a note on what the pre-PR report lacks; and an edit to a
-protected path, a person-only reliab command, or a match for the profile's
-`protected_commands` or `protected_edits` gets a note that a person approves
-it. The CI gates above are authoritative.
+Every release archive also holds the plugin. Extract
+`reliab_<version>_<os>_<arch>.tar.gz` and start Claude Code with
+`claude --plugin-dir <extracted>/plugin`; set `RELIAB_BIN` to the extracted
+binary to run that one.
 
 ## Develop
 
 ```sh
 go build ./cmd/reliab
 go test ./...
+reliab run change      # reliab is tested with its own reliab.yaml
 ```
 
 `go.mod` pins the toolchain; an older local Go downloads it automatically.
-To try the plugin against a local build, run `scripts/dev-build.sh`: it builds
-reliab and the adapters into `~/.reliab/dev`, which an unreleased plugin
-(version 0.0.0) runs instead of downloading a release. `RELIAB_BIN` overrides
-the binary outright.
+`scripts/dev-build.sh` builds reliab and the adapters into `~/.reliab/dev`,
+which an unreleased plugin (version 0.0.0) runs instead of downloading a
+release. Design decisions are in
+[knowledge/decisions/](knowledge/decisions/); the current model is
+[profile-v2](knowledge/decisions/profile-v2.md).
 
 ## Release
 
-1. On a commit ci passed on, set `version` in `plugin/.claude-plugin/plugin.json`
-   to `X.Y.Z` and commit it, with at most the release's line in
-   `knowledge/log.md`: the release workflow takes ci's pass on the parent for
-   that commit, and refuses one that changes anything else until ci passes on it.
-   To check the archives first, run `goreleaser check` and
-   `goreleaser release --snapshot --clean` (goreleaser v2): `dist/` gets one
-   archive per OS and architecture, each holding `reliab`, every
-   `reliab-adapter-*`, the plugin directory, and the README, plus
-   `checksums.txt`.
+1. On a commit CI passed on, set `version` in
+   `plugin/.claude-plugin/plugin.json` to `X.Y.Z` and commit it, with at most
+   the release's line in `knowledge/log.md`. The release workflow takes CI's
+   pass on the parent for that commit, and refuses one that changes anything
+   else until CI passes on it. To check the archives first, run
+   `goreleaser check` and `goreleaser release --snapshot --clean`
+   (goreleaser v2).
 2. Tag that commit `vX.Y.Z` and push the tag. The release workflow checks the
    tag matches the plugin version, runs the tests, and publishes binaries and
-   checksums with goreleaser.
+   checksums.

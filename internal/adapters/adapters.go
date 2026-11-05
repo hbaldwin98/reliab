@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/hbaldwin98/reliab/internal/report"
@@ -61,6 +62,16 @@ var formats = map[string]format{
 		}
 		return parsed{fails: fs, counts: FindingsCounts(raw), files: FindingsFileCounts(raw)}, nil
 	}, decisive: true},
+}
+
+// Formats returns the parser names, sorted.
+func Formats() []string {
+	names := make([]string, 0, len(formats))
+	for n := range formats {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // Supported reports whether format has a parser.

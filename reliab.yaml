@@ -1,0 +1,43 @@
+version: 1
+base: origin/main
+
+commands:
+  build:
+    about: Compile everything. If this fails, nothing else is worth running.
+    change: go build ./...
+    pr: go build ./...
+    audit: go build ./...
+
+  lint:
+    about: >
+      golangci-lint. Each issue is a finding at a file and line; fix the
+      code, never silence the linter to pass.
+    change: rm -f .reliab/lint.json; golangci-lint run --output.json.path .reliab/lint.json ./...; go run ./cmd/adapters/golangci-lint -exit $? .reliab/lint.json .reliab/analyzers.json
+    pr: rm -f .reliab/lint.json; golangci-lint run --output.json.path .reliab/lint.json ./...; go run ./cmd/adapters/golangci-lint -exit $? .reliab/lint.json .reliab/analyzers.json
+    audit: rm -f .reliab/lint.json; golangci-lint run --output.json.path .reliab/lint.json ./...; go run ./cmd/adapters/golangci-lint -exit $? .reliab/lint.json .reliab/analyzers.json
+    output: { file: .reliab/analyzers.json, parse: findings }
+    after: [build]
+
+  unit:
+    about: >
+      Unit tests, with coverage in the same pass. A failing test is either
+      a product bug (fix the code) or a wrong test (fix the test, never
+      loosen an assertion to pass).
+    change: gotestsum --junitfile .reliab/unit.xml -- {projects}
+    pr: gotestsum --junitfile .reliab/unit.xml -- -coverprofile=.reliab/cover.out ./...
+    audit: gotestsum --junitfile .reliab/unit.xml -- -coverprofile=.reliab/cover.out ./...
+    targeted: gotestsum --junitfile .reliab/unit.xml -- -coverprofile=.reliab/cover.out {projects}
+    output: { file: .reliab/unit.xml, parse: junit }
+    after: [build]
+
+  mutation:
+    about: >
+      Mutation testing with gremlins. Slow. A surviving mutant means no test
+      checks that line's behavior: add a test that does, or say why no test
+      can (the mutant changes nothing observable).
+    pr: scripts/mutation.sh changed origin/main
+    audit: scripts/mutation.sh full
+    output: { file: .reliab/out/mutation.json, parse: findings }
+    after: [unit]
+    exclusive: true
+    timeout: 30m
