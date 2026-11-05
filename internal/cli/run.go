@@ -3,10 +3,8 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"io"
 	"path/filepath"
-	"strings"
-	"time"
+	"slices"
 
 	"github.com/spf13/cobra"
 
@@ -59,7 +57,7 @@ command's line and what its failure means, and runs nothing.`,
 				return withCode(ExitConfig, err)
 			}
 			context := args[0]
-			if !contains(runner.Contexts, context) {
+			if !slices.Contains(runner.Contexts, context) {
 				return withCode(ExitConfig, fmt.Errorf("unknown context %q: use change, pr or audit", context))
 			}
 			var t *runner.Target
@@ -98,7 +96,7 @@ command's line and what its failure means, and runs nothing.`,
 			results := runner.Run(cmd.Context(), p, runner.Options{
 				Root: root, Shell: shell, Parallel: parallel, Progress: cmd.ErrOrStderr(),
 			})
-			if printResults(out, results) {
+			if runner.PrintResults(out, results) {
 				return withCode(ExitFindings, errors.New("checks failed"))
 			}
 			return nil
@@ -109,90 +107,4 @@ command's line and what its failure means, and runs nothing.`,
 	cmd.Flags().StringVar(&base, "base", "", "ref that changed files are measured from (default: reliab.yaml's base, then origin/HEAD, origin/main, main, master)")
 	cmd.Flags().IntVar(&parallel, "parallel", 0, "most commands running at once (default: CPU count)")
 	return cmd
-}
-
-// printResults writes one line per step, then each failure's findings, and
-// reports whether anything did not pass.
-func printResults(w io.Writer, results []*runner.StepResult) bool {
-	failed := false
-	fmt.Fprintln(w)
-	for _, r := range results {
-		line := fmt.Sprintf("%-8s %-12s", mark(r.Status), r.Step.Name)
-		switch r.Status {
-		case runner.Blocked:
-			line += " " + r.BlockedBy + " did not pass"
-		default:
-			line += " " + r.Elapsed.Round(100*time.Millisecond).String()
-			if r.Outside > 0 {
-				line += fmt.Sprintf("  (%d findings outside the target)", r.Outside)
-			}
-		}
-		fmt.Fprintln(w, strings.TrimRight(line, " "))
-		if r.Status != runner.Passed {
-			failed = true
-		}
-	}
-	for _, r := range results {
-		if r.Status == runner.Passed || r.Status == runner.Blocked {
-			continue
-		}
-		fmt.Fprintf(w, "\n%s: %s (log: %s)\n", r.Step.Name, r.Status, r.Log)
-		for i, f := range r.Findings {
-			if i == 10 {
-				fmt.Fprintf(w, "  ... and %d more\n", len(r.Findings)-10)
-				break
-			}
-			head := f.Location
-			if f.Test != "" {
-				head = strings.TrimSpace(f.Test + " " + head)
-			}
-			msg := firstLines(f.Message, 6)
-			if head != "" && strings.Contains(msg, f.Location) {
-				head = f.Test
-			}
-			if head != "" {
-				fmt.Fprintf(w, "  - %s\n", head)
-				if msg != "" {
-					fmt.Fprintf(w, "    %s\n", strings.ReplaceAll(msg, "\n", "\n    "))
-				}
-			} else {
-				fmt.Fprintf(w, "  - %s\n", strings.ReplaceAll(msg, "\n", "\n    "))
-			}
-		}
-		if about := strings.TrimSpace(r.Step.About); about != "" {
-			fmt.Fprintf(w, "  about: %s\n", strings.ReplaceAll(about, "\n", " "))
-		}
-	}
-	return failed
-}
-
-func mark(s runner.Status) string {
-	switch s {
-	case runner.Passed:
-		return "pass"
-	case runner.Blocked:
-		return "blocked"
-	case runner.TimedOut:
-		return "timeout"
-	case runner.Cancelled:
-		return "cancel"
-	}
-	return "FAIL"
-}
-
-func firstLines(s string, n int) string {
-	lines := strings.Split(strings.TrimSpace(s), "\n")
-	if len(lines) > n {
-		lines = append(lines[:n], "...")
-	}
-	return strings.Join(lines, "\n")
-}
-
-func contains(xs []string, s string) bool {
-	for _, x := range xs {
-		if x == s {
-			return true
-		}
-	}
-	return false
 }
