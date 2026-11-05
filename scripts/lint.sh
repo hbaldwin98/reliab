@@ -9,7 +9,7 @@
 #                 newline. CR counts: .gitattributes stores every text file
 #                 with LF (*.ps1 and *.cmd get CRLF only in the working tree)
 #   golangci-lint the version pinned in tools/go.mod, built with this
-#                 module's toolchain 
+#                 module's toolchain
 set -u
 cd "$(dirname "$0")/.."
 base=${1:-}

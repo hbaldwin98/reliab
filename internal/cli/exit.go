@@ -10,7 +10,6 @@ const (
 	ExitIncomplete = 3 // incomplete (budget) with no findings
 )
 
-
 // exitError carries a specific exit code out of a command.
 type exitError struct {
 	code int
