@@ -123,7 +123,7 @@ func stripLineComment(s string) string {
 func braceEnd(lines []string, i int) (int, bool) {
 	depth, opened := 0, false
 	inBlock := false
-	for j := i; j < len(lines) && j < i+5000; j++ {
+	for j := i; j < len(lines); j++ {
 		line := lines[j]
 		if !opened && j > i+3 {
 			return 0, false // declaration with no body nearby
