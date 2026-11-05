@@ -72,11 +72,11 @@ didn't need and the runs you would have thrown away.
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/hbaldwin98/reliab/main/scripts/install.sh | sh -s -- 0.4.0
+curl -fsSL https://raw.githubusercontent.com/hbaldwin98/reliab/main/scripts/install.sh | sh -s -- 0.5.0
 ```
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/hbaldwin98/reliab/main/scripts/install.ps1))) -Version 0.4.0
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/hbaldwin98/reliab/main/scripts/install.ps1))) -Version 0.5.0
 ```
 
 This installs `reliab` and its adapters into `~/.reliab/bin`; add that to
