@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/hbaldwin98/reliab/internal/verify"
 )
 
 // Source for every test in this file: knowledge/decisions/profile-v2.md,
@@ -17,7 +15,7 @@ import (
 
 func runYAML(t *testing.T, y string, tg *Target) map[string]*StepResult {
 	t.Helper()
-	shell, err := verify.FindShell()
+	shell, err := FindShell()
 	if err != nil {
 		t.Skip(err)
 	}
@@ -84,7 +82,7 @@ func TestRunExclusiveRunsAlone(t *testing.T) {
 			y += "    exclusive: true\n"
 		}
 	}
-	shell, err := verify.FindShell()
+	shell, err := FindShell()
 	if err != nil {
 		t.Skip(err)
 	}
@@ -135,7 +133,7 @@ commands:
 }
 
 func TestRunEnvAndLog(t *testing.T) {
-	shell, err := verify.FindShell()
+	shell, err := FindShell()
 	if err != nil {
 		t.Skip(err)
 	}
@@ -206,5 +204,40 @@ func TestTargetContains(t *testing.T) {
 	}
 	if !ResolveAll().Contains("anything", 1) {
 		t.Error("everything contains everything")
+	}
+}
+
+// Source: docs/adapters.md (the shipped adapters sit beside reliab and
+// commands find them) and README "Run" (RELIAB_SEED reruns a failure).
+func TestRunPathAndSeed(t *testing.T) {
+	shell, err := FindShell()
+	if err != nil {
+		t.Skip(err)
+	}
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "reliab-adapter-x"), []byte("#!/bin/sh\necho adapter-ran\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _ := Parse([]byte("version: 1\ncommands:\n  e: { about: x, audit: 'reliab-adapter-x; echo \"seed=$RELIAB_SEED\"' }\n"))
+	p, _ := Build(cfg, "audit", ResolveAll(), false, "")
+	p.Seed = 42
+	root := t.TempDir()
+	res := Run(context.Background(), p, Options{Root: root, Shell: shell, BinDir: bin})
+	log, _ := os.ReadFile(filepath.Join(root, filepath.FromSlash(res[0].Log)))
+	if res[0].Status != Passed || !strings.Contains(string(log), "adapter-ran") || !strings.Contains(string(log), "seed=42") {
+		t.Fatalf("status %s, log %q", res[0].Status, log)
+	}
+}
+
+func TestPrependPath(t *testing.T) {
+	got := prependPath([]string{"A=1", "PATH=/usr/bin"}, "/x")
+	if got[1] != "PATH=/x"+string(os.PathListSeparator)+"/usr/bin" {
+		t.Fatalf("got %v", got)
+	}
+	if got := prependPath([]string{"A=1"}, "/x"); got[1] != "PATH=/x" {
+		t.Fatalf("no PATH: %v", got)
+	}
+	if got := prependPath([]string{"A=1"}, ""); len(got) != 1 {
+		t.Fatalf("empty dir: %v", got)
 	}
 }

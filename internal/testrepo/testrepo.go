@@ -1,5 +1,4 @@
-// Package testrepo builds throwaway git repositories with a reliab profile
-// for tests.
+// Package testrepo builds throwaway git repositories for tests.
 package testrepo
 
 import (
@@ -9,37 +8,17 @@ import (
 	"testing"
 )
 
-// Roles fills every tool role, so test profiles only add what they need.
-const Roles = `roles:
-  T1: { tool: sh }
-  T2: { applicable: false, reason: no property library }
-  T3: { applicable: false, reason: none }
-  T4: { applicable: false, reason: none }
-  T5: { applicable: false, reason: none }
-  T6: { applicable: false, reason: none }
-  T7: { applicable: false, reason: none }
-  T8: { applicable: false, reason: none }
-  T9: { applicable: false, reason: none }
-  T10: { applicable: false, reason: none }
-  T11: { applicable: false, reason: none }
-  T12: { applicable: false, reason: none }
-  T13: { applicable: false, reason: none }
-  T14: { tool: sh }
-`
-
-// New creates a committed repository whose profile is a fixed header plus
-// extra YAML (commands, tiers, impacted, protected_paths), and returns its
-// root. Product code lives in src/, tests in test/, docs are ignored.
-func New(t *testing.T, extra string) string {
+// New creates a committed repository and returns its root. config, when
+// not empty, is written as reliab.yaml. src/a and src/b hold a file each.
+func New(t *testing.T, config string) string {
 	t.Helper()
 	dir := t.TempDir()
-	prof := "schemaVersion: 0.1.0\nname: test\nstarting_condition: greenfield\n" +
-		"paths: { product: [\"src/**\"], tests: [\"test/**\"], ignore: [\"docs/**\"] }\n" + Roles + extra
-	Write(t, dir, "reliability-profile.yaml", prof)
+	if config != "" {
+		Write(t, dir, "reliab.yaml", config)
+	}
 	Write(t, dir, ".gitignore", ".reliab/\n")
 	Write(t, dir, "src/a/a.txt", "a")
 	Write(t, dir, "src/b/b.txt", "b")
-	Write(t, dir, "snapshots/s.txt", "s")
 	Git(t, dir, "init", "-q", "-b", "main")
 	Git(t, dir, "add", "-A")
 	Git(t, dir, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qm", "init")

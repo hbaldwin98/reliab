@@ -1,6 +1,6 @@
 ---
 name: properties
-description: Write property-based tests for one area of the code from its stated intent, run them through reliab, and handle what they find. Use when asked to add properties, property tests, or specification tests for a path in a repository with reliability-profile.yaml.
+description: Write property-based tests for one area of the code from its stated intent, run them through reliab, and handle what they find. Use when asked to add properties, property tests, or specification tests for a path in a repository with reliab.yaml.
 argument-hint: <path>... [intent or source]
 ---
 
@@ -13,23 +13,20 @@ good as the intent it encodes.
 ## 1. Gather intent before reading the code
 
 Collect what the area is supposed to do, from the person's words, a ticket,
-a doc, a reviewed rule card, or a caller that depends on the behavior.
-Write the candidate properties down from these sources first. Only then read
-the implementation, to learn its inputs and how to call it. Tests written
-from the implementation pin what it does, not what it should do.
+a doc, or a caller that depends on the behavior. Write the candidate
+properties down from these sources first. Only then read the
+implementation, to learn its inputs and how to call it. Tests written from
+the implementation pin what it does, not what it should do.
 
 If no source says what should hold, ask the person. Do not invent intent.
 
 ## 2. Write the properties
 
-- Use the profile's T2 tool (`roles.T2` in `reliability-profile.yaml`). If T2
-  is not applicable, stop and say so.
-- Put them in the profile's test paths, never in protected paths.
-- Each property cites its source in a comment: the ticket, doc, rule card,
-  or caller.
-- Read the seed and case count from the environment reliab sets
-  (`RELIAB_SEED`, `RELIAB_PROPERTY_CASES`, or the profile's `{seed}` and
-  `{cases}`) when the tool supports it.
+- Use the property tool the repository already uses (rapid, FsCheck,
+  fast-check, Hypothesis, proptest). If it has none, ask before adding one.
+- Put them beside the area's existing tests, so the command that runs those
+  tests runs them too.
+- Each property cites its source in a comment: the ticket, doc, or caller.
 
 Before running, check each property can fail: it asserts something, swallows
 no errors, and its generator reaches the interesting cases (boundaries,
@@ -38,59 +35,43 @@ generated cases when the tool allows it.
 
 ## 3. Run them through reliab
 
-Use `properties` if the profile defines it, else the command that runs the
-new tests (usually `unit`):
-
 ```sh
-reliab verify --only properties --scope <path> [--seed <seed>]
+reliab run change --target <path> --plan
+reliab run change --target <path>
 ```
 
-The run writes `.reliab/reports/on-demand-latest.json`; it never stands in
-for the inner or pre-PR report. Then run `reliab report route`.
+The plan shows which command runs the new tests. If none does, say so. The
+full log is `.reliab/run/<command>.log`.
 
 ## 4. Handle each failure
 
-Reproduce it from its seed, shrink it to a minimal case, and classify it:
-`reliab findings classify <id> --kind <kind> --reason "<one line>"`.
+Reproduce it from its seed: the run prints it, and `reliab run <context> --seed <n>`
+reruns with the same random inputs (commands get it as `RELIAB_SEED`; pass it
+to the property tool, e.g. `-rapid.seed=$RELIAB_SEED`). Shrink it to a minimal case, and decide what it
+is:
 
-- `wrong-property`: the source does not say this. Delete the property and
+- **The property is wrong:** the source does not say this. Delete it and
   write down why.
-- `harness-defect`: the generator or setup is wrong. Fix it.
-- `new-code-defect`: code changed in this work breaks the intent. Fix the
+- **The generator or setup is wrong (fix-test):** fix it.
+- **Code changed in this work breaks the intent (fix-code):** fix the
   product code, never the property.
-- `legacy-defect-or-quirk`: behavior that predates this work contradicts
-  the source. Stop; a person decides.
-- `requirement-silent`: the source says nothing about this input (no limit
-  stated, say), so neither the code nor the property is wrong by it. Do not
-  pick a side; record the question in the reason and stop. A person says
-  what is intended. Use it for behavior new on the branch too; it is not a
-  legacy quirk.
+- **Behavior that predates this work contradicts the source (ask-human):**
+  stop; a person decides.
+- **The source says nothing about this input (ask-human):** neither the
+  code nor the property is wrong by it. Do not pick a side; write the
+  question down and stop. A person says what is intended.
 
 Never weaken a property or narrow its generator to make it pass.
 
-Classify before you fix: the fix makes the finding leave the next report,
-and the PR summary's fixed list shows the kind and reason you recorded.
-
-If the property tool saved the failing case as a file under a protected
-path (a regression seed), commit it with the fix: it keeps the failure
-fixed. You may not approve it. `reliab gate protected` and the PR summary
-list it as a question for a human until a person runs
-`reliab approve <path> --by human:<name>`; hooks deny that command to you.
-Tell the user it waits for them.
-
-The tool writes the saved case during the failing run; you only commit it.
-You cannot write a protected path, so a saved case that exists only on
-another branch or clone cannot be copied in by you (hooks deny even
-`git checkout <ref> -- <file>`). Either re-run the failing property against
-the code before the fix, so the tool writes it again, or stop and give the
-user the exact commands to copy it in. A person then runs `reliab approve`.
+If the tool saved the failing case as a file (a regression seed), commit it
+with the fix: it keeps the failure fixed. Never delete one to make a run
+pass.
 
 Optionally, to show the properties have teeth, run the mutation skill on the
 same area.
 
 ## 5. Finish
 
-Run `reliab verify --tier inner` and act on it as the verify skill says.
-Report each property and its source, what ran (command, scope, seed, case
-count), every failure and how it was classified, anything skipped and why,
-and every question for a person.
+Run `reliab run change`. Report each property and its source, what ran
+(command line, target, seed, case count), every failure and what you
+decided it was, anything skipped and why, and every question for a person.

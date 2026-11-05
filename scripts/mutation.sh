@@ -3,13 +3,13 @@
 # converts its reports into findings.
 #   scripts/mutation.sh changed [BASE]   packages changed since BASE; mutants on changed lines
 #   scripts/mutation.sh full      every package; all mutants
-# RELIAB_SCOPE (set by reliab verify --scope) limits either mode to packages
-# with a Go file under its paths; a file in scope mutates its whole package.
+# RELIAB_SCOPE (space-separated paths) limits either mode to packages with
+# a Go file under its paths; a file in scope mutates its whole package.
 # gremlins runs per package because from the module root on Windows it sees
 # no coverage (go-gremlins/gremlins#222; see cmd/adapters/gremlins).
 set -u
 mode=${1:-changed}
-# BASE is the run's resolved base (the profile passes {base}), else
+# BASE is the base ref (reliab.yaml passes it), else
 # RELIAB_BASE, else origin/main or main.
 base=${2:-${RELIAB_BASE:-$(git rev-parse -q --verify origin/main || echo main)}}
 case $mode in

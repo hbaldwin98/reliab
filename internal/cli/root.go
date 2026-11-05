@@ -29,7 +29,7 @@ func Execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 func newRoot() *cobra.Command {
 	root := &cobra.Command{
 		Use:           "reliab",
-		Short:         "Run the evidence stack and enforce the agent contract",
+		Short:         "Run your project's test tools in order, on a target, and read their results",
 		Version:       version.Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -37,15 +37,8 @@ func newRoot() *cobra.Command {
 	root.AddCommand(
 		newRunCmd(),
 		newProfileCmd(),
-		newVerifyCmd(),
-		newReportCmd(),
 		newFindingsCmd(),
-		newCharacterizeCmd(),
 		newDebugCmd(),
-		newGateCmd(),
-		newBaselineCmd(),
-		newApproveCmd(),
-		newHookCmd(),
 		newDoctorCmd(),
 		newVersionCmd(),
 		newSnapdiffCmd(),

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/hbaldwin98/reliab/internal/testrepo"
-	"github.com/hbaldwin98/reliab/internal/verify"
 )
 
 // TestPrintPlanExact pins the --plan text. Source: README "Run" and
@@ -219,7 +218,7 @@ func TestToRanges(t *testing.T) {
 // blocked, a passing after lets it start, and --parallel caps how many run
 // at once (README "Run"; reliab run --parallel).
 func TestRunParallelCap(t *testing.T) {
-	shell, err := verify.FindShell()
+	shell, err := FindShell()
 	if err != nil {
 		t.Skip(err)
 	}
@@ -262,7 +261,7 @@ func TestRunErrorPaths(t *testing.T) {
 	}
 	cfg, _ := Parse([]byte("version: 1\ncommands:\n  u: { about: x, audit: 'true', output: { file: u.xml, parse: junit } }\n"))
 	p, _ := Build(cfg, "audit", ResolveAll(), false, "")
-	shell, err := verify.FindShell()
+	shell, err := FindShell()
 	if err != nil {
 		t.Skip(err)
 	}
@@ -292,7 +291,7 @@ func TestRunErrorPaths(t *testing.T) {
 // its own outcome, exit -1, with a finding saying so; cancelling the run
 // cancels its steps.
 func TestRunTimeoutAndCancel(t *testing.T) {
-	shell, err := verify.FindShell()
+	shell, err := FindShell()
 	if err != nil {
 		t.Skip(err)
 	}

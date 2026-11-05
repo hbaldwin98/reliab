@@ -100,7 +100,7 @@ func TestFindingsCheckHelper(t *testing.T) {
 	if code != ExitFindings || strings.Count(out, "warning:") != 2 || !strings.Contains(out, "names a line") || !strings.Contains(out, "a.txt is not a file in the repository") {
 		t.Errorf("warnings: code %d out %q", code, out)
 	}
-	if code, _, errOut = run("findings", "check", "bad.json"); code != ExitConfig || !strings.Contains(errOut, "verify would reject it") {
+	if code, _, errOut = run("findings", "check", "bad.json"); code != ExitConfig || !strings.Contains(errOut, "reliab run would reject it") {
 		t.Errorf("rejected: code %d err %q", code, errOut)
 	}
 	if code, _, _ = run("findings", "check", "missing.json"); code != ExitConfig {
@@ -132,7 +132,7 @@ func TestDocsAdapters(t *testing.T) {
 	if code, out, _ := run("docs", "overview"); code != ExitOK || !strings.HasPrefix(out, "# reliab in this repository\n") {
 		t.Errorf("overview: code %d out %.80q", code, out)
 	}
-	if code, out, _ := run("docs", "ci"); code != ExitOK || !strings.Contains(out, "reliab gate protected") {
+	if code, out, _ := run("docs", "ci"); code != ExitOK || !strings.Contains(out, "reliab run pr") {
 		t.Errorf("ci: code %d out %.80q", code, out)
 	}
 	// knowledge/decisions/debug-adapter-seam.md: reliab docs debug prints

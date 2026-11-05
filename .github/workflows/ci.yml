@@ -64,20 +64,17 @@ jobs:
             go.sum
             tools/go.sum
       - run: go install gotest.tools/gotestsum@latest
-      # The profile's analyzers command calls golangci-lint from PATH: the
+      # reliab.yaml's lint command calls golangci-lint from PATH: the
       # version pinned in tools/go.mod, built with this module's toolchain.
       - run: go install -modfile=tools/go.mod github.com/golangci/golangci-lint/v2/cmd/golangci-lint
-      # reliab verifies itself. Allowed to fail until stage S0 has verified
-      # the fillings in reliability-profile.yaml.
-      - run: go run ./cmd/reliab verify --tier prepr
+      # reliab runs its own reliab.yaml. Allowed to fail: mutation needs
+      # gremlins, which this job does not install.
+      - run: go run ./cmd/reliab run pr
         continue-on-error: true
-      - run: go run ./cmd/reliab report export --format junit -o reliab-report.xml
-        if: always()
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: reliab-report
+          name: reliab-run
           path: |
-            reliab-report.xml
             .reliab/
           include-hidden-files: true

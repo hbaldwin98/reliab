@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"path/filepath"
 	"slices"
 
@@ -10,7 +11,6 @@ import (
 
 	"github.com/hbaldwin98/reliab/internal/gitx"
 	"github.com/hbaldwin98/reliab/internal/runner"
-	"github.com/hbaldwin98/reliab/internal/verify"
 )
 
 func newRunCmd() *cobra.Command {
@@ -19,6 +19,7 @@ func newRunCmd() *cobra.Command {
 		plan     bool
 		base     string
 		parallel int
+		seed     uint32
 	)
 	cmd := &cobra.Command{
 		Use:   "run <change|pr|audit>",
@@ -42,6 +43,9 @@ A line may use {files}, {projects} and {tests}: the target's source files,
 the projects that own them (a .csproj, a Go package, a package.json dir),
 and their tests. With --target, a command's targeted line, when it has one,
 runs instead of its context line. Findings outside the target are dropped.
+
+Commands get RELIAB_SEED, random per run or set with --seed, for property
+and fuzz tools: a failed run prints it, so the same inputs can be rerun.
 
 Run with --plan first: it prints what would run, in order, with each
 command's line and what its failure means, and runs nothing.`,
@@ -80,6 +84,10 @@ command's line and what its failure means, and runs nothing.`,
 			if err != nil {
 				return withCode(ExitConfig, err)
 			}
+			p.Seed = seed
+			if !cmd.Flags().Changed("seed") {
+				p.Seed = rand.Uint32()
+			}
 			out := cmd.OutOrStdout()
 			if plan {
 				p.Print(out)
@@ -89,7 +97,7 @@ command's line and what its failure means, and runs nothing.`,
 				fmt.Fprintf(out, "nothing changed since %s; nothing to run\n", ref)
 				return nil
 			}
-			shell, err := verify.FindShell()
+			shell, err := runner.FindShell()
 			if err != nil {
 				return withCode(ExitConfig, err)
 			}
@@ -97,6 +105,7 @@ command's line and what its failure means, and runs nothing.`,
 				Root: root, Shell: shell, Parallel: parallel, Progress: cmd.ErrOrStderr(),
 			})
 			if runner.PrintResults(out, results) {
+				fmt.Fprintf(out, "\nseed %d: reliab run %s --seed %d reruns with the same random inputs\n", p.Seed, context, p.Seed)
 				return withCode(ExitFindings, errors.New("checks failed"))
 			}
 			return nil
@@ -106,5 +115,6 @@ command's line and what its failure means, and runs nothing.`,
 	cmd.Flags().BoolVar(&plan, "plan", false, "print what would run, in order, and run nothing")
 	cmd.Flags().StringVar(&base, "base", "", "ref that changed files are measured from (default: reliab.yaml's base, then origin/HEAD, origin/main, main, master)")
 	cmd.Flags().IntVar(&parallel, "parallel", 0, "most commands running at once (default: CPU count)")
+	cmd.Flags().Uint32Var(&seed, "seed", 0, "RELIAB_SEED for property and fuzz tools, to rerun a failure (default: random)")
 	return cmd
 }

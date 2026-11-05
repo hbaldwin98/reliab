@@ -19,6 +19,7 @@ type Step struct {
 	After     []string
 	Exclusive bool
 	Timeout   time.Duration
+	Threshold float64
 	Output    *Output
 	// Stage is the step's depth in the after-graph, from 1: what --plan
 	// shows as order. Steps in one stage may run together.
@@ -30,7 +31,9 @@ type Plan struct {
 	Context string
 	Base    string
 	Target  *Target
-	Steps   []*Step
+	// Seed is RELIAB_SEED for the run's commands.
+	Seed  uint32
+	Steps []*Step
 	// NotHere are commands with no line for the context.
 	NotHere []string
 	// NoTests are targeted commands skipped because the target has no
@@ -55,7 +58,7 @@ func Build(cfg *Config, context string, t *Target, explicit bool, base string) (
 			p.NotHere = append(p.NotHere, name)
 			continue
 		}
-		s := &Step{Name: name, About: strings.TrimSpace(c.About), Exclusive: c.Exclusive, Timeout: c.Timeout, Output: c.Output}
+		s := &Step{Name: name, About: strings.TrimSpace(c.About), Exclusive: c.Exclusive, Timeout: c.Timeout, Threshold: c.Threshold, Output: c.Output}
 		if explicit && c.Targeted != "" {
 			line, s.Targeted = c.Targeted, true
 		}
@@ -183,6 +186,9 @@ func (p *Plan) Print(w io.Writer) {
 			}
 			if s.Timeout > 0 {
 				tags = append(tags, "timeout "+s.Timeout.String())
+			}
+			if s.Threshold > 0 {
+				tags = append(tags, fmt.Sprintf("mutation score >= %g%%", s.Threshold))
 			}
 			head := "  " + s.Name
 			if len(tags) > 0 {

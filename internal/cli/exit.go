@@ -10,9 +10,6 @@ const (
 	ExitIncomplete = 3 // incomplete (budget) with no findings
 )
 
-// exitHookError is the exit code for a hook that failed to decide. Claude
-// Code shows exit 1 as a non-blocking error; exit 2 would block the action.
-const exitHookError = 1
 
 // exitError carries a specific exit code out of a command.
 type exitError struct {

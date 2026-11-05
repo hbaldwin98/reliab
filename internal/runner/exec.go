@@ -47,6 +47,8 @@ type StepResult struct {
 	Findings  []report.Finding
 	// Outside counts findings dropped because they fall outside the target.
 	Outside int
+	// Mutants are the mutation counts the output reported, if any.
+	Mutants *report.MutantCounts
 }
 
 // Options configure a run.
@@ -57,7 +59,10 @@ type Options struct {
 	Parallel int
 	// Progress, when set, gets a line as each step starts and ends.
 	Progress io.Writer
-	Now      func() time.Time
+	// BinDir goes first on PATH; default the directory holding reliab,
+	// where the shipped reliab-adapter-* binaries live.
+	BinDir string
+	Now    func() time.Time
 }
 
 // Run executes a plan. Steps whose afters passed start as soon as a slot is
@@ -71,12 +76,19 @@ func Run(ctx context.Context, p *Plan, opt Options) []*StepResult {
 		opt.Now = time.Now
 	}
 	_ = os.MkdirAll(filepath.Join(opt.Root, LogDir), 0o755)
-	env := append(os.Environ(),
+	binDir := opt.BinDir
+	if binDir == "" {
+		if exe, err := os.Executable(); err == nil {
+			binDir = filepath.Dir(exe)
+		}
+	}
+	env := append(prependPath(os.Environ(), binDir),
 		"RELIAB_CONTEXT="+p.Context,
 		"RELIAB_BASE="+p.Base,
 		"RELIAB_TARGET_FILES="+strings.Join(p.Target.Files, "\n"),
 		"RELIAB_TARGET_PROJECTS="+strings.Join(p.Target.Projects, "\n"),
 		"RELIAB_TARGET_TESTS="+strings.Join(p.Target.Tests, "\n"),
+		"RELIAB_SEED="+strconv.FormatUint(uint64(p.Seed), 10),
 	)
 
 	results := map[string]*StepResult{}
@@ -227,7 +239,9 @@ func runStep(ctx context.Context, p *Plan, s *Step, opt Options, env []string) *
 		in.Format, in.Display, in.Declared = s.Output.Parse, s.Output.File, true
 		in.Outputs = outputFiles(opt.Root, s.Output.File)
 	}
-	for _, f := range adapters.Findings(in).Findings {
+	parsed := adapters.Findings(in)
+	res.Mutants = parsed.Mutants
+	for _, f := range parsed.Findings {
 		if file, line, ok := location(f.Location); ok && !p.Target.Contains(file, line) {
 			res.Outside++
 			continue
@@ -235,7 +249,24 @@ func runStep(ctx context.Context, p *Plan, s *Step, opt Options, env []string) *
 		res.Findings = append(res.Findings, f)
 	}
 	res.Status = Passed
-	if res.ExitCode != 0 || len(res.Findings) > 0 {
+	if res.ExitCode != 0 {
+		res.Status = Failed
+	}
+	if s.Threshold > 0 {
+		// The score decides, not each survivor: survivors are what to look
+		// at, and the threshold is how many may remain.
+		if m := res.Mutants; m != nil {
+			counted := m.Killed + m.Survived + m.NotCovered
+			if report.Below(m.Killed, counted, s.Threshold) {
+				res.Status = Failed
+				res.Findings = append(res.Findings, finding(s.Name, fmt.Sprintf("mutation score %.1f%% is below the threshold %g%% (%d killed of %d)",
+					report.Percent(m.Killed, counted), s.Threshold, m.Killed, counted)))
+			}
+		} else {
+			res.Status = Failed
+			res.Findings = append(res.Findings, finding(s.Name, fmt.Sprintf("threshold %g%% set, but %s output has no mutant counts", s.Threshold, s.Output.Parse)))
+		}
+	} else if len(res.Findings) > 0 {
 		res.Status = Failed
 	}
 	return res
@@ -281,4 +312,29 @@ func tailFile(path string, n int) string {
 		lines = lines[len(lines)-n:]
 	}
 	return strings.Join(lines, "\n")
+}
+
+// prependPath puts dir first on the PATH in env, so commands find the
+// adapters shipped beside reliab. Windows spells the variable in any case.
+func prependPath(env []string, dir string) []string {
+	if dir == "" {
+		return env
+	}
+	out := make([]string, 0, len(env)+1)
+	found := false
+	for _, kv := range env {
+		k, v, _ := strings.Cut(kv, "=")
+		if k == "PATH" || (runtime.GOOS == "windows" && strings.EqualFold(k, "PATH")) {
+			if !found {
+				out = append(out, k+"="+dir+string(os.PathListSeparator)+v)
+				found = true
+			}
+			continue
+		}
+		out = append(out, kv)
+	}
+	if !found {
+		out = append(out, "PATH="+dir)
+	}
+	return out
 }

@@ -1,0 +1,69 @@
+# Example reliab.yaml for a made-up rust service. Tools and paths are
+# illustrative: write yours from what your project runs.
+version: 1
+
+commands:
+  build:
+    about: Compile everything. If this fails, nothing else is worth running.
+    change: cargo build --workspace --locked --all-targets
+    pr: cargo build --workspace --locked --all-targets
+    audit: cargo build --workspace --locked --all-targets
+
+  analyzers:
+    about: 'Static analysis. Each issue is a finding at a file and line: fix the code, never silence the analyzer to pass.'
+    change: cargo clippy --workspace --all-targets --locked -- -D warnings
+    pr: cargo clippy --workspace --all-targets --locked -- -D warnings
+    audit: cargo clippy --workspace --all-targets --locked -- -D warnings
+    after: [build]
+
+  unit:
+    about: Unit tests. A failing test is a product bug (fix the code) or a wrong test (fix the test; never loosen an assertion).
+    change: "cargo nextest run --locked --profile ci {projects} -E 'not test(/^prop_/)'"
+    pr: "cargo nextest run --locked --profile ci --workspace -E 'not test(/^prop_/)'"
+    audit: "cargo nextest run --locked --profile ci --workspace -E 'not test(/^prop_/)'"
+    output: { file: target/nextest/ci/junit.xml, parse: junit }
+    after: [build]
+
+  snapshots:
+    about: Snapshot tests. A changed snapshot is either a bug or an intended change a person accepts.
+    pr: "rm -rf .reliab/out/insta; INSTA_UPDATE=new INSTA_PENDING_DIR=\"$PWD/.reliab/out/insta\" cargo nextest run --locked --profile snapshots -p service --test transcripts; reliab-adapter-insta -exit $? -junit target/nextest/snapshots/junit.xml .reliab/out/insta .reliab/out/snapshots.json"
+    audit: "rm -rf .reliab/out/insta; INSTA_UPDATE=new INSTA_PENDING_DIR=\"$PWD/.reliab/out/insta\" cargo nextest run --locked --profile snapshots -p service --test transcripts; reliab-adapter-insta -exit $? -junit target/nextest/snapshots/junit.xml .reliab/out/insta .reliab/out/snapshots.json"
+    output: { file: .reliab/out/snapshots.json, parse: findings }
+    after: [build]
+
+  properties:
+    about: 'Property tests: rules that must hold for any input. A failure prints a shrunk counterexample; reproduce it from its seed.'
+    change: "PROPTEST_CASES=100 PROPTEST_RNG_SEED=$RELIAB_SEED cargo nextest run --locked --profile properties --workspace -E 'test(/^prop_/)'"
+    pr: "PROPTEST_CASES=1000 PROPTEST_RNG_SEED=$RELIAB_SEED cargo nextest run --locked --profile properties --workspace -E 'test(/^prop_/)'"
+    audit: "PROPTEST_CASES=10000 PROPTEST_RNG_SEED=$RELIAB_SEED cargo nextest run --locked --profile properties --workspace -E 'test(/^prop_/)'"
+    output: { file: target/nextest/properties/junit.xml, parse: junit }
+    after: [build]
+
+  fuzz:
+    about: 'Fuzzing: random and malformed input. A crash is saved as a reproducible case.'
+    pr: "t=$(cargo +nightly fuzz list | wc -l); for f in $(cargo +nightly fuzz list); do cargo +nightly fuzz run \"$f\" -- -max_total_time=$(( 120 / t + 1 )) || exit 1; done"
+    audit: "t=$(cargo +nightly fuzz list | wc -l); for f in $(cargo +nightly fuzz list); do cargo +nightly fuzz run \"$f\" -- -max_total_time=$(( 1800 / t + 1 )) || exit 1; done"
+    after: [build]
+    exclusive: true
+
+  faults_db:
+    about: Fault injection on the data store.
+    pr: "cargo nextest run --locked --profile faults -p service -E 'test(/fault/)'"
+    audit: "cargo nextest run --locked --profile faults -p service -E 'test(/fault/)'"
+    output: { file: target/nextest/faults/junit.xml, parse: junit }
+    after: [build]
+
+  mutation:
+    about: 'Mutation testing. A surviving mutant means no test checks that line''s behavior: add a test that does, or say why none can.'
+    pr: rm -rf .reliab/out/mutants.out; git diff origin/main > .reliab/out/diff.patch; cargo mutants --in-diff .reliab/out/diff.patch -o .reliab/out --jobs 4; reliab-adapter-cargo-mutants -exit $? .reliab/out/mutants.out .reliab/out/mutation.json
+    audit: rm -rf .reliab/out/mutants.out; cargo mutants --workspace -o .reliab/out; reliab-adapter-cargo-mutants -exit $? .reliab/out/mutants.out .reliab/out/mutation.json
+    output: { file: .reliab/out/mutation.json, parse: findings }
+    after: [unit]
+    exclusive: true
+
+  coverage:
+    about: 'Coverage: which lines the tests reach.'
+    pr: cargo llvm-cov nextest --workspace --locked --cobertura --output-path .reliab/out/coverage.xml
+    audit: cargo llvm-cov nextest --workspace --locked --cobertura --output-path .reliab/out/coverage.xml
+    output: { file: .reliab/out/coverage.xml, parse: cobertura }
+    after: [unit]

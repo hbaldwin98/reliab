@@ -1,0 +1,20 @@
+# reliab debug run | attach | probe (knowledge/decisions/debug-adapter-seam.md):
+# delve's DAP server on a loopback port. --set program=./internal/<pkg>
+# --set test=<TestName> name what to run.
+adapter:
+  run: dlv dap --listen=127.0.0.1:{port}
+  transport: tcp
+  ready: "DAP server listening"
+launch:
+  mode: test
+  program: "{program}"
+  args: ["-test.run", "^{test}$", "-test.count=1"]
+  # Program output as DAP output events, in order with the stops.
+  outputMode: remote
+  # The debug build goes under .reliab/, which git ignores.
+  output: "{root}/.reliab/debug/__debug_bin"
+attach:
+  mode: local
+  processId: "{pid}"
+source_root: .
+notes: "delve builds without optimizations itself (-gcflags=all=-N -l), so locals are complete"

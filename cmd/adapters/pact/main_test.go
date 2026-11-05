@@ -10,9 +10,8 @@ import (
 	"testing"
 
 	"github.com/hbaldwin98/reliab/internal/adapters"
+	"github.com/hbaldwin98/reliab/internal/runner"
 	"github.com/hbaldwin98/reliab/internal/testrepo"
-	"github.com/hbaldwin98/reliab/internal/triage"
-	"github.com/hbaldwin98/reliab/internal/verify"
 	"github.com/hbaldwin98/reliab/pkg/findings"
 	"github.com/hbaldwin98/reliab/pkg/snapdiff"
 )
@@ -264,9 +263,9 @@ func TestMainExitStatus(t *testing.T) {
 }
 
 // knowledge/decisions/consumer-contracts.md: the whole path, the adapter's
-// file read by reliab verify as the contracts command, then shown by reliab
-// report route with the contract advice.
-func TestRouteShowsContractAdvice(t *testing.T) {
+// file read by reliab run as the contracts command, each change shown with
+// its label.
+func TestRunShowsContractChanges(t *testing.T) {
 	findingsFile, err := filepath.Abs(filepath.Join(t.TempDir(), "contracts.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -274,32 +273,32 @@ func TestRouteShowsContractAdvice(t *testing.T) {
 	if err := run(0, "", pending, accepted, findingsFile, false); err != nil {
 		t.Fatal(err)
 	}
-	root := testrepo.New(t, `commands:
+	root := testrepo.New(t, `version: 1
+commands:
   contracts:
-    run: cp '`+filepath.ToSlash(findingsFile)+`' .reliab/out/contracts.json
-    format: findings
-    output: .reliab/out/contracts.json
+    about: Consumer contracts.
+    audit: cp '`+filepath.ToSlash(findingsFile)+`' contracts.json
+    output: { file: contracts.json, parse: findings }
 `)
-	if _, _, err := verify.Run(context.Background(), verify.Options{Root: root, Profile: "reliability-profile.yaml", Tier: "inner"}); err != nil {
+	shell, err := runner.FindShell()
+	if err != nil {
+		t.Skip(err)
+	}
+	cfg, err := runner.Load(filepath.Join(root, runner.DefaultPath))
+	if err != nil {
 		t.Fatal(err)
 	}
+	p, err := runner.Build(cfg, "audit", runner.ResolveAll(), false, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := runner.Run(context.Background(), p, runner.Options{Root: root, Shell: shell})
+	if len(res[0].Findings) != 3 {
+		t.Fatalf("findings = %+v", res[0].Findings)
+	}
 	var buf bytes.Buffer
-	if n, err := triage.Route(&buf, root); err != nil || n != 3 {
-		t.Fatalf("n=%d err=%v out=%q", n, err, buf.String())
-	}
-	out := buf.String()
-	for _, want := range []string{
-		"needs more from the provider",
-		"copy the pending contract over the accepted one",
-		"--kind characterization-diff",
-		"diff: " + snapdiff.Describe(snapdiff.AdditiveOnly),
-		`"state": "authorized"`,
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("route lacks %q:\n%s", want, out)
-		}
-	}
-	if strings.Contains(out, "a pinned output changed") {
-		t.Errorf("route gives the snapshot advice for a contract:\n%s", out)
+	runner.PrintResults(&buf, res)
+	if out := buf.String(); !strings.Contains(out, snapdiff.Describe(snapdiff.AdditiveOnly)) {
+		t.Errorf("output lacks the additive-only label:\n%s", out)
 	}
 }

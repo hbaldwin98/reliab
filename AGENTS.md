@@ -2,34 +2,27 @@
 ## Testing rules (reliab)
 
 ### Workflow
-- Run `reliab verify --tier inner` when a change is done, not after each file edit. Run `reliab verify --tier prepr` before a branch merges into main. For a PR, paste `reliab report summary` as the body's evidence section, adding nothing it does not support.
-- Read `reliab report route` and act per kind (below).
-- Write properties from intent. Each property cites its source in a comment: a ticket, a doc, a reviewed rule card, or a caller that depends on the behavior.
-- Reproduce every failure from its seed, shrink it, and classify it before reporting: `reliab findings classify <id> --kind <kind> --reason "..."`.
-- Before reporting, check each new test can fail: no swallowed exceptions, no missing assertions, and the generator reaches the interesting cases.
-- For a second opinion on the evidence, commit and ask the `reliab:reviewer` agent.
-- Report what you ran, what you skipped, and why.
+- Start with `reliab run <context> --plan`: it shows what will run, in what order, and what each command's failure means.
+- Run `reliab run change` when a change is done, not after each file edit. Run `reliab run pr` before a branch merges.
+- To look at one area, add `--target` with a project, folder, file, or `file#Function`.
+- Write tests from intent. Each new test cites its source in a comment: a ticket, a doc, or a caller that depends on the behavior. The implementation is not a source.
+- Reproduce a property or fuzz failure from the seed the run prints (`--seed`), and shrink it before fixing it.
+- Check that each new test can fail: no swallowed exceptions, no missing assertions, and the generator reaches the interesting cases.
+- Report what you ran, what failed, and what you skipped and why.
 
-### Leave to a person
-- Never change an assertion, widen a tolerance, or add a catch block to make a test pass.
-- Protected paths (`protected_paths` in reliability-profile.yaml) and `.reliab/` change only with a person's approval. Commit a failing case your property tool saves under one with its fix, and list it as a question; the person runs `reliab approve <path>`.
-- `reliab findings ack` and `reliab approve` are a person's to run; `reliab report verdict` is the reviewer agent's.
+### When something fails
+Decide what kind of failure it is, then act:
+- fix-code: the product code is wrong. Fix it and run again.
+- fix-test: the test, the harness, or a missing test is wrong. Fix it and run again. If a property is wrong, delete it and say why.
+- ask-human: only a person can say whether the behavior is intended, or the machine is broken. Stop and ask, quoting the evidence.
 
-### When a test fails
-- new-code-defect -> fix product code, re-run.
-- harness-defect -> fix the harness, re-run.
-- wrong-property -> delete it, write down why.
-- legacy-defect-or-quirk -> stop; a human decides.
-- characterization-diff -> stop and ask a human.
-- equivalent-mutant -> stop; a human confirms it.
-- requirement-silent -> stop; a human says whether the behavior is intended.
-- below-threshold -> never classified; handle its survivors, never a test only to raise the score; then stop, a human accepts the score.
-- environment -> only after re-running the failing command once, with the machine's error quoted in the reason (resources, network, a missing service; never a test you cannot explain); stop, a human fixes the machine.
+Never change an assertion, widen a tolerance, or add a catch block to make a test pass.
 
 ### Mutation testing
-- Kill a surviving mutant only when its behavior is intended: the test cites where (a ticket, a doc, a rule, a caller that depends on it). The implementation is not a source.
-- If nothing states the behavior, do not pin it: classify it `requirement-silent` with the question.
-- If no test can kill it because it cannot change behavior, classify it `equivalent-mutant` with a one-line reason.
+- Kill a surviving mutant only when its behavior is stated somewhere (a ticket, a doc, a caller that depends on it), and cite that in the test.
+- If nothing states the behavior, don't pin it. Ask a person whether it is intended.
+- If a mutant cannot change behavior, say so in one line. It needs no test.
+- Never write a test only to raise the score.
 <!-- reliab:end -->
 
 Developing reliab on Windows: read [docs/windows.md](docs/windows.md) first.

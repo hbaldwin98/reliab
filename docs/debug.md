@@ -3,34 +3,33 @@
 `reliab debug` runs a test or a program under the language's debug
 adapter, stops where you ask, records what you ask, and writes a
 transcript. It speaks the Debug Adapter Protocol (DAP) once, for every
-language; the profile names the adapter and its launch and attach
-arguments, as `commands` names the test tools. Use it when a test's output
+language; `reliab-debug.yaml` names the adapter and its launch and attach
+arguments, as `reliab.yaml` names the test tools. Use it when a test's output
 does not show a failure's cause. The `/reliab:diagnose` skill drives it
 from a symptom to a failing test.
 
 It is non-interactive: no stepping. Name the test, the breakpoints, and the
 expressions to dump; read the transcript; move the breakpoints; run again.
 
-## The profile block
+## reliab-debug.yaml
 
-`debug` is optional, beside `host_adapter`. The profile is protected, so a
-person adds the block; `reliab debug probe` checks it.
+At the repository root, beside `reliab.yaml`. It is optional: only `reliab
+debug` reads it, and `reliab debug probe` checks it.
 
 ```yaml
-debug:
-  adapter:
-    run: dlv dap --listen=127.0.0.1:{port}   # the command line; the first word is looked up on PATH
-    transport: tcp                            # tcp | stdio
-    ready: "DAP server listening"             # tcp only, optional: a regex on the adapter's output
-  launch:                                     # the DAP launch request's arguments, verbatim after expansion
-    mode: test
-    program: "{program}"
-    args: ["-test.run", "^{test}$"]
-  attach:                                     # the DAP attach request's arguments
-    mode: local
-    processId: "{pid}"
-  source_root: .                              # optional: adapter paths are made repo-relative from here
-  notes: "anything the next reader needs"
+adapter:
+  run: dlv dap --listen=127.0.0.1:{port}   # the command line; the first word is looked up on PATH
+  transport: tcp                            # tcp | stdio
+  ready: "DAP server listening"             # tcp only, optional: a regex on the adapter's output
+launch:                                     # the DAP launch request's arguments, verbatim after expansion
+  mode: test
+  program: "{program}"
+  args: ["-test.run", "^{test}$"]
+attach:                                     # the DAP attach request's arguments
+  mode: local
+  processId: "{pid}"
+source_root: .                              # optional: adapter paths are made repo-relative from here
+notes: "anything the next reader needs"
 ```
 
 - **`transport: stdio`**: the adapter is the child process and DAP runs on
@@ -53,8 +52,8 @@ debug:
   `.reliab/debug/adapter.log`; when it fails before the program runs,
   reliab prints the last 64 KiB of that output.
 
-`reliab profile validate` checks the block; `reliab doctor` checks the
-adapter's first word is on PATH.
+`reliab debug probe` loads the file and checks the adapter answers;
+`reliab doctor` checks the adapter's first word is on PATH.
 
 ## Adapters
 
@@ -66,20 +65,19 @@ yet run). Check an illustrative block with `reliab debug probe` and one
 ### Go: delve (verified: probe, run, and attach; dlv 1.27 on Windows)
 
 ```yaml
-debug:
-  adapter:
-    run: dlv dap --listen=127.0.0.1:{port}
-    transport: tcp
-    ready: "DAP server listening"
-  launch:
-    mode: test
-    program: "{program}"                      # a package directory: --set program=./internal/report
-    args: ["-test.run", "^{test}$", "-test.count=1"]
-    outputMode: remote                        # program output as DAP output events, in order with the stops
-    output: "{root}/.reliab/debug/__debug_bin" # the debug build, out of the working tree
-  attach:
-    mode: local
-    processId: "{pid}"
+adapter:
+  run: dlv dap --listen=127.0.0.1:{port}
+  transport: tcp
+  ready: "DAP server listening"
+launch:
+  mode: test
+  program: "{program}"                      # a package directory: --set program=./internal/report
+  args: ["-test.run", "^{test}$", "-test.count=1"]
+  outputMode: remote                        # program output as DAP output events, in order with the stops
+  output: "{root}/.reliab/debug/__debug_bin" # the debug build, out of the working tree
+attach:
+  mode: local
+  processId: "{pid}"
 ```
 
 Install with `go install github.com/go-delve/delve/cmd/dlv@latest`. Delve
@@ -90,18 +88,17 @@ by package (`report.Route`).
 ### Python: debugpy (verified: probe and run under pytest, debugpy 1.8 on Windows; attach illustrative)
 
 ```yaml
-debug:
-  adapter:
-    run: python -m debugpy.adapter
-    transport: stdio
-  launch:
-    module: pytest
-    args: ["-q", "-p", "no:cacheprovider", "{test}"]   # --set test=tests/test_calc.py::test_mean
-    cwd: "{cwd}"
-    console: internalConsole                           # output as DAP events; integratedTerminal would ask for runInTerminal
-    justMyCode: false
-  attach:
-    processId: "{pid}"
+adapter:
+  run: python -m debugpy.adapter
+  transport: stdio
+launch:
+  module: pytest
+  args: ["-q", "-p", "no:cacheprovider", "{test}"]   # --set test=tests/test_calc.py::test_mean
+  cwd: "{cwd}"
+  console: internalConsole                           # output as DAP events; integratedTerminal would ask for runInTerminal
+  justMyCode: false
+attach:
+  processId: "{pid}"
 ```
 
 `python` is the interpreter that has debugpy installed (a virtualenv's, by
@@ -113,17 +110,16 @@ where the test raised. Locals come in two scopes, Locals and Globals.
 ### .NET: netcoredbg (illustrative)
 
 ```yaml
-debug:
-  adapter:
-    run: netcoredbg --interpreter=vscode
-    transport: stdio
-  launch:
-    program: dotnet
-    args: ["test", "{project}", "--no-build", "--filter", "FullyQualifiedName~{test}"]
-    cwd: "{cwd}"
-    stopAtEntry: false
-  attach:
-    processId: "{pid}"
+adapter:
+  run: netcoredbg --interpreter=vscode
+  transport: stdio
+launch:
+  program: dotnet
+  args: ["test", "{project}", "--no-build", "--filter", "FullyQualifiedName~{test}"]
+  cwd: "{cwd}"
+  stopAtEntry: false
+attach:
+  processId: "{pid}"
 ```
 
 Microsoft's vsdbg speaks DAP too, but its license limits it to Visual
@@ -136,16 +132,15 @@ prefer `--catch-filter` with a named filter over `--catch`.
 ### C, C++, Rust: lldb-dap (illustrative)
 
 ```yaml
-debug:
-  adapter:
-    run: lldb-dap
-    transport: stdio
-  launch:
-    program: "{root}/{program}"               # a built binary: --set program=target/debug/deps/mycrate-1a2b3c
-    args: ["{test}", "--exact", "--nocapture"]
-    cwd: "{cwd}"
-  attach:
-    pid: "{pid}"
+adapter:
+  run: lldb-dap
+  transport: stdio
+launch:
+  program: "{root}/{program}"               # a built binary: --set program=target/debug/deps/mycrate-1a2b3c
+  args: ["{test}", "--exact", "--nocapture"]
+  cwd: "{cwd}"
+attach:
+  pid: "{pid}"
 ```
 
 `lldb-dap` was `lldb-vscode` before LLVM 18. Build the test binary first
@@ -184,7 +179,7 @@ reliab debug run --set program=./internal/report --set test=TestRouteKinds \
 | `--budget d` | 10m | The whole command's limit: adapter start, the build some adapters do in `launch`, the run, and teardown. |
 | `--width n` | 160 | Where the text rendering cuts a long value, with a marker. |
 | `--json` | off | Print the transcript instead of the text rendering. |
-| `-f file` | `reliability-profile.yaml` | The profile. |
+| `-f file` | `reliab-debug.yaml` | The debug settings. |
 
 What it does: expands `launch`, starts the adapter, sends `initialize` and
 `launch`; on `initialized` sets the breakpoints (grouped per file) and,
@@ -202,24 +197,24 @@ The text rendering, for an agent's eyes:
 
 ```text
 adapter: dlv dap --listen=127.0.0.1:43622 (tcp, port 43622)
-breakpoint internal/profile/profile.go:215: verified
-[stdout] Building tests of ./internal/profile
+breakpoint internal/runner/config.go:92: verified
+[stdout] Building tests of ./internal/runner
 == stop 1: breakpoint, thread 8
-  at internal/profile/profile.go:215 profile.Parse
-     internal/profile/profile_test.go:65 profile.TestParseMinimal
+  at internal/runner/config.go:92 runner.Parse
+     internal/runner/config_test.go:30 runner.TestParseValid
   locals:
     err = error nil
-    p = profile.Profile {SchemaVersion: "0.1.0", Name: "tiny", StartingCondition: "green... [cut, 179 more chars]
+    cfg = runner.Config {Version: 1, Base: "origin/main", Commands: map[string]*runner.Command ... [cut, 98 more chars]
   dumps:
-    p.Name = "tiny"
-    len(p.Commands) = 2
+    cfg.Base = "origin/main"
+    len(cfg.Commands) = 2
 [stdout] PASS
 end: exited, program exit code 0; 1 stop(s), 1.6s; exit 0; transcript .reliab/debug/20261021-192118.json
 ```
 
 ## reliab debug attach --pid <pid>
 
-The same loop over the profile's `attach` block, with `{pid}` from
+The same loop over the `attach` block, with `{pid}` from
 `--pid`, which is required. At the end it disconnects and leaves the
 process running unless `--terminate` is given. It attaches only to what
 the adapter can reach from this machine. Attach only to a process you
@@ -259,7 +254,7 @@ a PR; quote the lines that show the cause.
 |---|---|
 | 0 | The program ran to its end with no exception stop. |
 | 1 | At least one exception stop, or `--max-stops`, `--timeout`, or a failed request ended the run. |
-| 2 | The profile, the adapter, or the launch failed before the program ran. |
+| 2 | reliab-debug.yaml, the adapter, or the launch failed before the program ran. |
 | 3 | `--budget` passed. |
 
 A failing test whose program exits non-zero is still exit 0 when nothing

@@ -64,7 +64,7 @@ func debugScripts(root string) map[string]*daptest.Script {
 	}
 }
 
-// debugRepo is a repository whose profile's adapter plays script.
+// debugRepo is a repository whose reliab-debug.yaml adapter plays script.
 func debugRepo(t *testing.T, script string) string {
 	t.Helper()
 	return debugRepoWith(t, script+` "DAP server listening"`, `{ mode: test, program: "{program}", args: ["-test.run", "^{test}$"] }`)
@@ -78,15 +78,13 @@ func debugRepoWith(t *testing.T, adapterArgs, launch string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	root := testrepo.New(t, `commands:
-  build: "true"
-debug:
-  adapter:
-    run: '"`+filepath.ToSlash(exe)+`" `+daptest.ChildArg+` tcp {port} `+adapterArgs+`'
-    transport: tcp
-    ready: DAP server listening
-  launch: `+launch+`
-  attach: { mode: local, processId: "{pid}" }
+	root := testrepo.New(t, "")
+	testrepo.Write(t, root, "reliab-debug.yaml", `adapter:
+  run: '"`+filepath.ToSlash(exe)+`" `+daptest.ChildArg+` tcp {port} `+adapterArgs+`'
+  transport: tcp
+  ready: DAP server listening
+launch: `+launch+`
+attach: { mode: local, processId: "{pid}" }
 `)
 	t.Setenv("DAPTEST_ROOT", root)
 	t.Chdir(root)
@@ -210,17 +208,17 @@ func TestDebugConfigErrors(t *testing.T) {
 	t.Run("unexpanded placeholder", func(t *testing.T) {
 		root := debugRepo(t, "ok")
 		code, _, errOut := run("debug", "run", "--set", "program=./src/a")
-		if code != ExitConfig || !strings.Contains(errOut, "{test}") || !strings.Contains(errOut, "debug.launch.args[1]") {
+		if code != ExitConfig || !strings.Contains(errOut, "{test}") || !strings.Contains(errOut, "launch.args[1]") {
 			t.Errorf("exit %d, stderr %q", code, errOut)
 		}
 		if _, err := os.Stat(filepath.Join(root, ".reliab", "debug", "adapter.log")); !os.IsNotExist(err) {
 			t.Errorf("the adapter started: %v", err)
 		}
 	})
-	t.Run("no debug section", func(t *testing.T) {
-		t.Chdir(testrepo.New(t, "commands:\n  build: \"true\"\n"))
+	t.Run("no reliab-debug.yaml", func(t *testing.T) {
+		t.Chdir(testrepo.New(t, ""))
 		code, _, errOut := run("debug", "run")
-		if code != ExitConfig || !strings.Contains(errOut, "no debug section") || !strings.Contains(errOut, "reliab docs debug") {
+		if code != ExitConfig || !strings.Contains(errOut, "no reliab-debug.yaml") || !strings.Contains(errOut, "reliab docs debug") {
 			t.Errorf("exit %d, stderr %q", code, errOut)
 		}
 	})
@@ -305,7 +303,7 @@ func TestDebugRunPidOnlyFromAttach(t *testing.T) {
 func TestDebugRunUnexpandedInAdapterRun(t *testing.T) {
 	debugRepoWith(t, `ok "DAP server listening" {flavor}`, `{ program: x }`)
 	code, _, errOut := run("debug", "probe")
-	if code != ExitConfig || !strings.Contains(errOut, "unexpanded placeholder {flavor} in debug.adapter.run") {
+	if code != ExitConfig || !strings.Contains(errOut, "unexpanded placeholder {flavor} in adapter.run") {
 		t.Errorf("exit %d, stderr %q", code, errOut)
 	}
 }

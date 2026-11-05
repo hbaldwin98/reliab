@@ -36,15 +36,18 @@ type Config struct {
 
 // Command is one entry under commands.
 type Command struct {
-	Name      string        `yaml:"-"`
-	About     string        `yaml:"about"`
-	Change    string        `yaml:"change,omitempty"`
-	PR        string        `yaml:"pr,omitempty"`
-	Audit     string        `yaml:"audit,omitempty"`
-	Targeted  string        `yaml:"targeted,omitempty"`
-	Output    *Output       `yaml:"output,omitempty"`
-	After     []string      `yaml:"after,omitempty"`
-	Exclusive bool          `yaml:"exclusive,omitempty"`
+	Name      string   `yaml:"-"`
+	About     string   `yaml:"about"`
+	Change    string   `yaml:"change,omitempty"`
+	PR        string   `yaml:"pr,omitempty"`
+	Audit     string   `yaml:"audit,omitempty"`
+	Targeted  string   `yaml:"targeted,omitempty"`
+	Output    *Output  `yaml:"output,omitempty"`
+	After     []string `yaml:"after,omitempty"`
+	Exclusive bool     `yaml:"exclusive,omitempty"`
+	// Threshold is the lowest mutation score, in percent, that passes. It
+	// applies to an output whose parser counts mutants.
+	Threshold float64       `yaml:"threshold,omitempty"`
 	Timeout   time.Duration `yaml:"-"`
 	RawTO     string        `yaml:"timeout,omitempty"`
 }
@@ -130,6 +133,11 @@ func (cfg *Config) validate() error {
 			errs = append(errs, fmt.Errorf("commands.%s.output: needs file and parse", name))
 		} else if c.Output != nil && !adapters.Supported(c.Output.Parse) {
 			errs = append(errs, fmt.Errorf("commands.%s.output.parse: unknown parser %q; use one of %s", name, c.Output.Parse, strings.Join(adapters.Formats(), ", ")))
+		}
+		if c.Threshold < 0 || c.Threshold > 100 {
+			errs = append(errs, fmt.Errorf("commands.%s.threshold: %v is not a percent from 0 to 100", name, c.Threshold))
+		} else if c.Threshold > 0 && c.Output == nil {
+			errs = append(errs, fmt.Errorf("commands.%s.threshold: needs an output whose parser counts mutants", name))
 		}
 		for _, a := range c.After {
 			if a == name {

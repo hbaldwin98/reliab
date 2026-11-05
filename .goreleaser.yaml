@@ -3,7 +3,7 @@
 version: 2
 project_name: reliab
 # Adapters (cmd/adapters) ship in the same archive, beside reliab, which puts
-# its own directory on PATH for profile commands.
+# its own directory on PATH for reliab.yaml commands.
 builds:
   - id: reliab
     main: ./cmd/reliab

@@ -1,7 +1,6 @@
 package repocheck
 
 import (
-	"bytes"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -37,26 +36,8 @@ func TestAgentsBlockMatchesTemplate(t *testing.T) {
 	}
 }
 
-// The dev repo's project reviewer agent is the plugin's reviewer, byte for
-// byte, so it cannot drift (knowledge/decisions/dev-environment.md).
-func TestDevReviewerMatchesPlugin(t *testing.T) {
-	a, err := os.ReadFile(filepath.Join(root, "plugin/agents/reviewer.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err := os.ReadFile(filepath.Join(root, ".claude/agents/reviewer.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(a, b) {
-		t.Error(".claude/agents/reviewer.md differs from plugin/agents/reviewer.md; copy the plugin's file over it")
-	}
-}
-
-// Every adapter reliab ships is named where users look for it: the README
-// and docs/adapters.md list the adapters that ship beside the binary
-// (knowledge/decisions/external-adapters.md). The release config's builds
-// are checked by TestReleaseArchivesHoldEverything.
+// Every adapter reliab ships is named in the README and docs/adapters.md
+// (knowledge/decisions/external-adapters.md).
 func TestAdaptersDocumented(t *testing.T) {
 	entries, err := os.ReadDir(filepath.Join(root, "cmd", "adapters"))
 	if err != nil {
@@ -84,7 +65,7 @@ func TestAdaptersDocumented(t *testing.T) {
 }
 
 // reliab docs overview is how an agent in a consumer repository explains
-// reliab, so it names every skill a person can invoke and the reviewer.
+// reliab, so it names every skill a person can invoke.
 func TestOverviewNamesSkills(t *testing.T) {
 	overview := readFile(t, "docs/overview.md")
 	entries, err := os.ReadDir(filepath.Join(root, "plugin", "skills"))
@@ -103,9 +84,6 @@ func TestOverviewNamesSkills(t *testing.T) {
 	}
 	if n == 0 {
 		t.Fatal("no skills under plugin/skills")
-	}
-	if !strings.Contains(overview, "`reliab:reviewer`") {
-		t.Error("docs/overview.md does not name the reliab:reviewer agent")
 	}
 }
 
@@ -137,5 +115,15 @@ func TestProjectHookScriptsExist(t *testing.T) {
 	}
 	if n < 1 {
 		t.Errorf("only %d project hooks configured", n)
+	}
+}
+
+// docs/overview.md prints the same testing rules block, so reliab docs
+// overview hands a consumer the current rules.
+func TestOverviewBlockMatchesTemplate(t *testing.T) {
+	text := readFile(t, "docs/overview.md")
+	want := strings.TrimSpace(strings.ReplaceAll(templates.Agents, "\r\n", "\n"))
+	if !strings.Contains(text, want) {
+		t.Error("docs/overview.md's reliab block differs from templates/agents.md; keep them identical")
 	}
 }

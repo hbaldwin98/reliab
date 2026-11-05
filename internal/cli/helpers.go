@@ -13,7 +13,7 @@ import (
 	"github.com/hbaldwin98/reliab/docs"
 	"github.com/hbaldwin98/reliab/internal/adapters"
 	"github.com/hbaldwin98/reliab/internal/gitx"
-	"github.com/hbaldwin98/reliab/internal/profile"
+	"github.com/hbaldwin98/reliab/internal/runner"
 	"github.com/hbaldwin98/reliab/pkg/snapdiff"
 )
 
@@ -71,9 +71,9 @@ func newChangedLinesCmd() *cobra.Command {
 		Use:   "changed-lines",
 		Short: "Print the lines the working tree changed since the base, per file",
 		Long: "Prints the line ranges the branch adds or changes relative to the merge base with the base\n" +
-			"ref, committed or not; untracked files count whole. The base is --base, else the profile's\n" +
+			"ref, committed or not; untracked files count whole. The base is --base, else reliab.yaml's\n" +
 			"base, else the first of origin/HEAD, origin/main, main, master. Adapters use it to keep\n" +
-			"findings on changed code (R7). Text: one \"file: 3-5,9\" line per file. JSON:\n" +
+			"findings on changed code. Text: one \"file: 3-5,9\" line per file. JSON:\n" +
 			"{\"base\": ref, \"files\": {file: [[start, end], ...]}}.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -82,8 +82,8 @@ func newChangedLinesCmd() *cobra.Command {
 				return withCode(ExitConfig, err)
 			}
 			profBase := ""
-			if p, err := profile.Load(filepath.Join(root, profile.DefaultPath)); err == nil {
-				profBase = p.Base
+			if c, err := runner.Load(filepath.Join(root, runner.DefaultPath)); err == nil {
+				profBase = c.Base
 			}
 			ref, err := gitx.ResolveBase(root, base, profBase)
 			if err != nil {
@@ -126,7 +126,7 @@ func newChangedLinesCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&base, "base", "", "ref to compare with (default: the profile's base, then origin/HEAD, origin/main, main, master)")
+	cmd.Flags().StringVar(&base, "base", "", "ref to compare with (default: reliab.yaml's base, then origin/HEAD, origin/main, main, master)")
 	cmd.Flags().BoolVar(&asJSON, "json", false, `print JSON: {"base": ref, "files": {file: [[start, end], ...]}}`)
 	return cmd
 }
@@ -152,13 +152,13 @@ func toRanges(lines map[int]bool) [][2]int {
 func newFindingsCheckCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "check <findings.json>",
-		Short: "Check an adapter's findings file before a profile command uses it",
-		Long: "Reads a findings file (schemas/findings.schema.json) as reliab verify would and prints\n" +
+		Short: "Check an adapter's findings file before a reliab.yaml command uses it",
+		Long: "Reads a findings file (schemas/findings.schema.json) as reliab run would and prints\n" +
 			"each finding's test and location, the mutant counts, and warnings about what would make\n" +
-			"findings unstable or misleading in a report: a test that names a line or a path from this\n" +
+			"findings unstable or misleading: a test that names a line or a path from this\n" +
 			"machine, a location or mutantFiles path that is not a file in the repository, and counts\n" +
 			"that do not match the findings. Paths are checked against the repository holding the\n" +
-			"working directory. Exit 0 clean, 1 warnings, 2 a file verify would reject.",
+			"working directory. Exit 0 clean, 1 warnings, 2 a file reliab run would reject.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			raw, err := os.ReadFile(args[0])
@@ -168,7 +168,7 @@ func newFindingsCheckCmd() *cobra.Command {
 			root, _ := gitx.Root(".")
 			c, err := adapters.CheckFindings(raw, root)
 			if err != nil {
-				return withCode(ExitConfig, fmt.Errorf("%s: reliab verify would reject it: %w", args[0], err))
+				return withCode(ExitConfig, fmt.Errorf("%s: reliab run would reject it: %w", args[0], err))
 			}
 			out := cmd.OutOrStdout()
 			fmt.Fprintf(out, "%s: %d findings\n", args[0], len(c.Findings))
@@ -219,4 +219,13 @@ func newDocsCmd() *cobra.Command {
 			return err
 		},
 	}
+}
+
+// repoRoot is the root of the repository holding the working directory.
+func repoRoot() (string, error) {
+	root, err := gitx.Root(".")
+	if err != nil {
+		return "", withCode(ExitConfig, err)
+	}
+	return root, nil
 }

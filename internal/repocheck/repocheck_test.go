@@ -12,8 +12,6 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-
-	"github.com/hbaldwin98/reliab/internal/cli"
 )
 
 const root = "../.."
@@ -49,38 +47,6 @@ func TestPluginVersionIsSemver(t *testing.T) {
 	readJSON(t, "plugin/.claude-plugin/plugin.json", &p)
 	if p.Name != "reliab" || !regexp.MustCompile(`^\d+\.\d+\.\d+$`).MatchString(p.Version) {
 		t.Fatalf("plugin.json = %+v", p)
-	}
-}
-
-// TestHooksCallRealSubcommands keeps hooks.json and the CLI in step.
-func TestHooksCallRealSubcommands(t *testing.T) {
-	var h struct {
-		Hooks map[string][]struct {
-			Hooks []struct{ Command string }
-		}
-	}
-	readJSON(t, "plugin/hooks/hooks.json", &h)
-	re := regexp.MustCompile(`/bin/reliab" (hook [a-z-]+)$`)
-	n := 0
-	for event, groups := range h.Hooks {
-		for _, g := range groups {
-			for _, hk := range g.Hooks {
-				m := re.FindStringSubmatch(hk.Command)
-				if m == nil {
-					t.Errorf("%s: command %q does not call the reliab launcher", event, hk.Command)
-					continue
-				}
-				var out, errOut bytes.Buffer
-				args := append(strings.Fields(m[1]), "--help")
-				if code := cli.Execute(args, strings.NewReader(""), &out, &errOut); code != 0 {
-					t.Errorf("%s: reliab %s is not a command: %s", event, m[1], errOut.String())
-				}
-				n++
-			}
-		}
-	}
-	if n < 4 {
-		t.Errorf("only %d hooks configured", n)
 	}
 }
 

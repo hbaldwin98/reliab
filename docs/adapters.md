@@ -2,9 +2,9 @@
 
 reliab reads JUnit XML, TRX, mutation-testing-elements JSON, and Cobertura
 itself. For any other tool, or one that exits 0 when it found failures, a
-profile command runs the tool and then an **adapter**: a small program, in
+`reliab.yaml` command runs the tool and then an **adapter**: a small program, in
 any language, that reads what the tool wrote and writes reliab's findings
-file. Nothing in reliab changes and nobody needs a commit here. Why it works
+file. The command reads that file with `parse: findings`. Nothing in reliab changes and nobody needs a commit here. Why it works
 this way: [knowledge/decisions/external-adapters.md](../knowledge/decisions/external-adapters.md).
 
 This page is the contract. `reliab docs adapters` prints it for the
@@ -15,40 +15,40 @@ installed version. In Claude Code, the plugin's `adapter` skill
 adapter: a bare command is judged by its exit code. A tool that reports
 several separate problems (a linter, an analyzer, a scanner) is better with
 one even when its exit code is honest. Judged by exit code, all its problems
-are one finding, `F-<command>`: a classification of it holds only while the
-command fails the same way, so a new problem reopens it, but the problems
-cannot be classified one by one. An adapter gives each its own id.
+are one finding with the log's tail as its message. An adapter gives each
+problem its own finding, with a location, so a `--target` can filter it.
 
 ## The contract
 
-**Run the tool, then the adapter.** The command names the adapter's file as
-its `output` and sets `format: findings`:
+**Run the tool, then the adapter.** The command's line runs both, and its
+`output` names the adapter's file with `parse: findings`:
 
 ```yaml
 commands:
   unit:
-    run: rm -f .reliab/out/specrun.json; specrun --report .reliab/out/specrun.json; python3 tools/reliab-adapter-specrun $? .reliab/out/specrun.json .reliab/out/unit.json
-    format: findings
-    output: .reliab/out/unit.json
+    about: Unit tests. A failure is a product bug or a wrong test.
+    change: rm -f .reliab/out/specrun.json; specrun --report .reliab/out/specrun.json; python3 tools/reliab-adapter-specrun $? .reliab/out/specrun.json .reliab/out/unit.json
+    pr:     rm -f .reliab/out/specrun.json; specrun --report .reliab/out/specrun.json; python3 tools/reliab-adapter-specrun $? .reliab/out/specrun.json .reliab/out/unit.json
+    output: { file: .reliab/out/unit.json, parse: findings }
 ```
 
-reliab deletes `output` before the command runs, but not the tool's own
-files: delete those first (as above), or ignore files older than
-`RELIAB_COMMAND_START` (RFC 3339, set for each command), or a leftover
-report from an earlier run looks like this run's result.
+reliab deletes the `output` file before the command runs, but not the
+tool's own files: delete those first (as above), or a leftover report from
+an earlier run looks like this run's result.
 
-**The findings file is the whole result.** Once it parses, reliab no longer
-looks at the command's exit code, so the adapter decides what the tool's
-exit code meant. Pass it through (`$?` above) and:
+**The adapter decides what the tool's exit code meant.** A command fails
+when its line exits nonzero or its findings file has a finding. Pass the
+tool's exit code to the adapter (`$?` above), and:
 
 - the tool ran and reported: write the file, `"findings": []` when nothing
-  failed, and exit 0;
+  failed, and exit 0, even when the tool exited nonzero because tests
+  failed. The findings carry the failures;
 - the tool did not run, or its output is missing or unreadable: write no
   file, say why on stderr, and exit nonzero. reliab then reports the
   command as failed, with its exit code and log tail.
 
-An adapter that writes an empty file when the tool never ran turns a broken
-command into a pass.
+An adapter that writes an empty file and exits 0 when the tool never ran
+turns a broken command into a pass.
 
 **The file** (`schemas/findings.schema.json`):
 
@@ -66,7 +66,7 @@ command into a pass.
 ```
 
 **`test` is the finding's id across runs.** The same failure must give the
-same `test` every run, or its classification is lost; every `test` in a
+same `test` every run, or it looks like a new failure; every `test` in a
 file is unique.
 
 - A failing test: its fully qualified name.
@@ -78,7 +78,9 @@ file is unique.
 
 **Paths are relative to the repository root**, not to the directory the
 tool ran in. reliab makes an absolute path inside the repository relative;
-anything else is taken as written.
+anything else is taken as written. With `--target`, a finding whose
+`location` is outside the target is dropped, so give a location whenever
+the tool reports one.
 
 **Optional fields:**
 
@@ -90,8 +92,8 @@ anything else is taken as written.
 | `observed`, `expected` | the values, when the tool reports them |
 | `diff` | for a changed snapshot: `additive-only` or `values-changed`, from `reliab snapdiff` |
 
-**Mutation tools** also write the counts, so the report can say how many
-mutants were tested and score a threshold:
+**Mutation tools** also write the counts, so the output can say how many
+mutants were tested and the command's `threshold` can be scored:
 
 ```json
 "mutants": { "killed": 37, "survived": 2, "notCovered": 1 },
@@ -112,18 +114,18 @@ These keep adapters agreeing with reliab, from any language:
 
 - `reliab changed-lines [--base <ref>] [--json]`: the lines the branch
   changed, per file, from the same base as everything else in reliab
-  (`{base}` or `RELIAB_BASE` in a profile command). Use it to keep only
-  findings on changed code.
+  (`RELIAB_BASE` in a command). Use it to keep only findings on changed
+  code.
 - `reliab snapdiff [--json] <accepted> <pending>`: the label for a changed
   snapshot.
 - Go adapters can import `github.com/hbaldwin98/reliab/pkg/findings`
   (writes the file, the mutant keys, the counts), `pkg/snapdiff`, and
   `pkg/testresults` (the failing tests in a JUnit or TRX report, read as
-  `reliab verify` reads them).
-- `reliab verify` puts its own directory first on PATH for profile
-  commands, so the adapters reliab ships (`reliab-adapter-cargo-mutants`,
-  `-golangci-lint`, `-gremlins`, `-insta`, `-pact`, `-verify`) and `reliab` itself are always found.
-  Their source in `cmd/adapters/` is a set of worked examples.
+  `reliab run` reads them).
+- The adapters reliab ships (`reliab-adapter-cargo-mutants`,
+  `-golangci-lint`, `-gremlins`, `-insta`, `-pact`, `-verify`) are
+  installed next to `reliab`, in `~/.reliab/bin`; keep that on PATH. Their
+  source in `cmd/adapters/` is a set of worked examples.
 
 ## Check a findings file
 
@@ -131,11 +133,11 @@ These keep adapters agreeing with reliab, from any language:
 reliab findings check <findings.json>
 ```
 
-It reads the file as `reliab verify` would and prints each finding's test
+It reads the file as `reliab run` would and prints each finding's test
 and location and the mutant counts. It warns about a test that names a line
 or a path from this machine, a `location` or `mutantFiles` path that is not
 a file in the repository, and counts that disagree. Exit 0 clean, 1
-warnings, 2 a file verify would reject. Run it from inside the repository,
+warnings, 2 a file a run would reject. Run it from inside the repository,
 or paths are not checked.
 
 ## Example: a made-up tool
@@ -224,5 +226,5 @@ python3 $a 2 $d/missing.json /tmp/broken.json; echo $?                          
 
 Put the same checks in the repository's own test framework so they keep
 running. Then probe it through reliab with a planted failure: add the
-command to the profile, run `reliab verify --only unit`, and confirm
-`reliab report route` shows a finding naming the planted test and line.
+command to `reliab.yaml`, run `reliab run change`, and confirm the output
+shows a finding naming the planted test and line.

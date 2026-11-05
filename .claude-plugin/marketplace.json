@@ -5,7 +5,7 @@
     {
       "name": "reliab",
       "source": "./plugin",
-      "description": "Run the evidence stack inside the edit loop and enforce the agent testing contract."
+      "description": "Run your project's test tools in order, on a target, and act on what they find."
     }
   ]
 }

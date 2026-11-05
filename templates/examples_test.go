@@ -6,63 +6,38 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/hbaldwin98/reliab/internal/profile"
+	"github.com/hbaldwin98/reliab/internal/runner"
 )
 
 // The onboard skill ships copies of the examples, since a plugin cannot
 // read files outside its own directory.
 const skillExamples = "../plugin/skills/onboard/examples"
 
-// commandRole is the role a command depends on, for those that depend on one
-// (internal/verify), so an example never wires a command for a role it marks
-// not applicable.
-var commandRole = map[string]string{
-	"unit": "T1", "properties": "T2", "model_tests": "T2", "snapshots": "T3",
-	"mutation_changed": "T4", "mutation_full": "T4", "api_fuzz": "T7",
-	"faults_http": "T9", "faults_db": "T10", "store_tests": "T11",
-	"coverage": "T12", "analyzers": "T14",
-}
-
 func examples(t *testing.T) []string {
 	t.Helper()
-	paths, err := filepath.Glob("examples/*.profile.yaml")
+	paths, err := filepath.Glob("examples/*.reliab.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(paths) < 3 {
-		t.Fatalf("found %d example profiles, want at least 3 (Go, Rust, .NET)", len(paths))
+		t.Fatalf("found %d examples, want at least 3 (Go, Rust, .NET)", len(paths))
 	}
 	return paths
 }
 
-func TestExampleProfilesAreValid(t *testing.T) {
+// Source: README "reliab.yaml": every example loads, and every command
+// runs in at least one context.
+func TestExamplesLoad(t *testing.T) {
 	for _, path := range examples(t) {
 		t.Run(filepath.Base(path), func(t *testing.T) {
-			p, err := profile.Load(path)
+			cfg, err := runner.Load(path)
 			if err != nil {
 				t.Fatal(err)
 			}
-			for id, role := range p.Roles {
-				switch {
-				case role.Applicable != nil:
-				case role.Verified == "":
-					t.Errorf("%s (%s) has no verified date: an example shows a finished S0", id, role.Tool)
-				}
-			}
-			for id := range p.Commands {
-				role, ok := commandRole[id]
-				if !ok {
-					continue
-				}
-				if r := p.Roles[role]; r.Applicable != nil {
-					t.Errorf("command %s is wired but %s is not applicable (%s)", id, role, r.Reason)
-				}
-			}
-			for name, tier := range p.Tiers {
-				for _, id := range tier.Run {
-					if _, ok := p.Commands[id]; !ok {
-						t.Errorf("tiers.%s runs %s, which commands does not define", name, id)
-					}
+			for _, name := range cfg.Names() {
+				c := cfg.Commands[name]
+				if c.Change == "" && c.PR == "" && c.Audit == "" {
+					t.Errorf("%s runs in no context", name)
 				}
 			}
 		})
@@ -77,18 +52,14 @@ func TestSkillExamplesMatch(t *testing.T) {
 		}
 		got, err := os.ReadFile(filepath.Join(skillExamples, filepath.Base(path)))
 		if err != nil {
-			t.Errorf("%v: copy it from templates/examples", err)
-			continue
+			t.Fatalf("%s: the onboard skill lacks a copy: %v", filepath.Base(path), err)
 		}
-		if !bytes.Equal(normalize(got), normalize(want)) {
-			t.Errorf("%s differs from %s: copy it from templates/examples", filepath.Join(skillExamples, filepath.Base(path)), path)
+		if !bytes.Equal(got, want) {
+			t.Errorf("%s: the onboard skill's copy differs; copy templates/examples over it", filepath.Base(path))
 		}
 	}
-	copies, _ := filepath.Glob(filepath.Join(skillExamples, "*"))
-	if len(copies) != len(examples(t)) {
-		t.Errorf("%s holds %d files, want one per example", skillExamples, len(copies))
+	extra, _ := filepath.Glob(filepath.Join(skillExamples, "*"))
+	if len(extra) != len(examples(t)) {
+		t.Errorf("the onboard skill has %d examples, templates has %d", len(extra), len(examples(t)))
 	}
 }
-
-// normalize ignores line endings, which git may convert on checkout.
-func normalize(b []byte) []byte { return bytes.ReplaceAll(b, []byte("\r\n"), []byte("\n")) }

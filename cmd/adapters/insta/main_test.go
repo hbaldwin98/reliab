@@ -9,9 +9,8 @@ import (
 	"testing"
 
 	"github.com/hbaldwin98/reliab/internal/adapters"
+	"github.com/hbaldwin98/reliab/internal/runner"
 	"github.com/hbaldwin98/reliab/internal/testrepo"
-	"github.com/hbaldwin98/reliab/internal/triage"
-	"github.com/hbaldwin98/reliab/internal/verify"
 	"github.com/hbaldwin98/reliab/pkg/findings"
 	"github.com/hbaldwin98/reliab/pkg/snapdiff"
 )
@@ -177,9 +176,10 @@ func TestRunErrors(t *testing.T) {
 	}
 }
 
-// The whole path: the adapter's file read by reliab verify, then shown by
-// reliab report route with each label.
-func TestRouteShowsLabels(t *testing.T) {
+// The whole path: the adapter's file read by reliab run, then shown with
+// each label (docs/adapters.md: snapshot diffs labelled additive-only or
+// values-changed).
+func TestRunShowsLabels(t *testing.T) {
 	findingsFile, err := filepath.Abs(filepath.Join(t.TempDir(), "snapshots.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -187,28 +187,38 @@ func TestRouteShowsLabels(t *testing.T) {
 	if err := run(101, "", "testdata/workspace", "testdata/pending", findingsFile); err != nil {
 		t.Fatal(err)
 	}
-	root := testrepo.New(t, `commands:
+	root := testrepo.New(t, `version: 1
+commands:
   snapshots:
-    run: cp '`+filepath.ToSlash(findingsFile)+`' .reliab/out/snapshots.json
-    format: findings
-    output: .reliab/out/snapshots.json
+    about: Snapshot tests.
+    audit: cp '`+filepath.ToSlash(findingsFile)+`' snapshots.json
+    output: { file: snapshots.json, parse: findings }
 `)
-	if _, _, err := verify.Run(context.Background(), verify.Options{Root: root, Profile: "reliability-profile.yaml", Tier: "prepr"}); err != nil {
+	shell, err := runner.FindShell()
+	if err != nil {
+		t.Skip(err)
+	}
+	cfg, err := runner.Load(filepath.Join(root, runner.DefaultPath))
+	if err != nil {
 		t.Fatal(err)
 	}
-	var buf bytes.Buffer
-	if n, err := triage.Route(&buf, root); err != nil || n != 2 {
-		t.Fatalf("n=%d err=%v out=%q", n, err, buf.String())
+	p, err := runner.Build(cfg, "audit", runner.ResolveAll(), false, "")
+	if err != nil {
+		t.Fatal(err)
 	}
+	res := runner.Run(context.Background(), p, runner.Options{Root: root, Shell: shell})
+	if len(res[0].Findings) != 2 {
+		t.Fatalf("findings = %+v", res[0].Findings)
+	}
+	var buf bytes.Buffer
+	runner.PrintResults(&buf, res)
 	out := buf.String()
 	for _, want := range []string{
-		"diff: " + snapdiff.Describe(snapdiff.AdditiveOnly),
-		"diff: " + snapdiff.Describe(snapdiff.ValuesChanged),
-		"--kind characterization-diff",
-		`+  "state": "cancelled"`,
+		snapdiff.Describe(snapdiff.AdditiveOnly),
+		snapdiff.Describe(snapdiff.ValuesChanged),
 	} {
 		if !strings.Contains(out, want) {
-			t.Errorf("route lacks %q:\n%s", want, out)
+			t.Errorf("output lacks %q:\n%s", want, out)
 		}
 	}
 }

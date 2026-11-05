@@ -1,0 +1,71 @@
+# Example reliab.yaml for a made-up dotnet service. Tools and paths are
+# illustrative: write yours from what your project runs.
+version: 1
+base: origin/main
+
+commands:
+  build:
+    about: Compile everything. If this fails, nothing else is worth running.
+    change: dotnet build Billing.sln -v q -nologo
+    pr: dotnet build Billing.sln -v q -nologo
+    audit: dotnet build Billing.sln -v q -nologo
+
+  analyzers:
+    about: 'Static analysis. Each issue is a finding at a file and line: fix the code, never silence the analyzer to pass.'
+    change: dotnet build Billing.sln -v q -nologo --no-incremental -warnaserror
+    pr: dotnet build Billing.sln -v q -nologo --no-incremental -warnaserror
+    audit: dotnet build Billing.sln -v q -nologo --no-incremental -warnaserror
+    after: [build]
+
+  unit:
+    about: Unit tests. A failing test is a product bug (fix the code) or a wrong test (fix the test; never loosen an assertion).
+    change: "dotnet test Billing.sln --no-build --filter \"TestCategory!=Property&TestCategory!=Snapshot&TestCategory!=StoreFault&({projects})\" --logger \"trx;LogFilePrefix=unit\" --results-directory .reliab/out/unit"
+    pr: "dotnet test Billing.sln --no-build --filter \"TestCategory!=Property&TestCategory!=Snapshot&TestCategory!=StoreFault&(FullyQualifiedName~Billing)\" --logger \"trx;LogFilePrefix=unit\" --results-directory .reliab/out/unit"
+    audit: "dotnet test Billing.sln --no-build --filter \"TestCategory!=Property&TestCategory!=Snapshot&TestCategory!=StoreFault&(FullyQualifiedName~Billing)\" --logger \"trx;LogFilePrefix=unit\" --results-directory .reliab/out/unit"
+    output: { file: .reliab/out/unit/*.trx, parse: trx }
+    after: [build]
+
+  snapshots:
+    about: Snapshot tests. A changed snapshot is either a bug or an intended change a person accepts.
+    pr: "DiffEngine_Disabled=true dotnet test Billing.sln --no-build --filter \"TestCategory=Snapshot\" --logger \"trx;LogFilePrefix=snapshots\" --results-directory .reliab/out/snapshots; reliab-adapter-verify -exit $? -trx '.reliab/out/snapshots/*.trx' -root . .reliab/out/snapshots.json"
+    audit: "DiffEngine_Disabled=true dotnet test Billing.sln --no-build --filter \"TestCategory=Snapshot\" --logger \"trx;LogFilePrefix=snapshots\" --results-directory .reliab/out/snapshots; reliab-adapter-verify -exit $? -trx '.reliab/out/snapshots/*.trx' -root . .reliab/out/snapshots.json"
+    output: { file: .reliab/out/snapshots.json, parse: findings }
+    after: [build]
+
+  properties:
+    about: 'Property tests: rules that must hold for any input. A failure prints a shrunk counterexample; reproduce it from its seed.'
+    change: "BILLING_PROP_CASES=100 BILLING_PROP_SEED=$RELIAB_SEED dotnet test Billing.sln --no-build --filter \"TestCategory=Property\" --logger \"trx;LogFilePrefix=properties\" --results-directory .reliab/out/properties"
+    pr: "BILLING_PROP_CASES=1000 BILLING_PROP_SEED=$RELIAB_SEED dotnet test Billing.sln --no-build --filter \"TestCategory=Property\" --logger \"trx;LogFilePrefix=properties\" --results-directory .reliab/out/properties"
+    audit: "BILLING_PROP_CASES=10000 BILLING_PROP_SEED=$RELIAB_SEED dotnet test Billing.sln --no-build --filter \"TestCategory=Property\" --logger \"trx;LogFilePrefix=properties\" --results-directory .reliab/out/properties"
+    output: { file: .reliab/out/properties/*.trx, parse: trx }
+    after: [build]
+
+  api_fuzz:
+    about: API fuzzing against the running service.
+    pr: sh scripts/reliab/api-fuzz.sh .reliab/out/api-fuzz.xml $RELIAB_SEED
+    audit: sh scripts/reliab/api-fuzz.sh .reliab/out/api-fuzz.xml $RELIAB_SEED
+    output: { file: .reliab/out/api-fuzz.xml, parse: junit }
+    after: [build]
+    exclusive: true
+
+  faults_db:
+    about: Fault injection on the data store.
+    pr: "dotnet test Billing.sln --no-build --filter \"TestCategory=StoreFault\" --logger \"trx;LogFilePrefix=faults-db\" --results-directory .reliab/out/faults-db"
+    audit: "dotnet test Billing.sln --no-build --filter \"TestCategory=StoreFault\" --logger \"trx;LogFilePrefix=faults-db\" --results-directory .reliab/out/faults-db"
+    output: { file: .reliab/out/faults-db/*.trx, parse: trx }
+    after: [build]
+
+  mutation:
+    about: 'Mutation testing. A surviving mutant means no test checks that line''s behavior: add a test that does, or say why none can.'
+    pr: "MSBuildSDKsPath=\"$DOTNET_ROOT/sdk/8.0.426/Sdks\" MSBuildEnableWorkloadResolver=false dotnet stryker --since:origin/main -O .reliab/out/stryker"
+    audit: "MSBuildSDKsPath=\"$DOTNET_ROOT/sdk/8.0.426/Sdks\" MSBuildEnableWorkloadResolver=false dotnet stryker -O .reliab/out/stryker"
+    output: { file: .reliab/out/stryker/reports/mutation-report.json, parse: mutation-report }
+    after: [unit]
+    exclusive: true
+
+  coverage:
+    about: 'Coverage: which lines the tests reach.'
+    pr: sh scripts/reliab/coverage.sh .reliab/out/coverage.cobertura.xml
+    audit: sh scripts/reliab/coverage.sh .reliab/out/coverage.cobertura.xml
+    output: { file: .reliab/out/coverage.cobertura.xml, parse: cobertura }
+    after: [unit]

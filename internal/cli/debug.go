@@ -19,7 +19,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/hbaldwin98/reliab/internal/dap"
-	"github.com/hbaldwin98/reliab/internal/profile"
 )
 
 // The debug commands, per knowledge/decisions/debug-adapter-seam.md.
@@ -31,28 +30,28 @@ const DefaultDebugBudget = 10 * time.Minute
 // adapterLog is where the adapter's own output goes during a session.
 const adapterLog = dap.Dir + "/adapter.log"
 
-// debugEnv is a loaded debug section with its placeholders' values.
+// debugEnv is loaded debug settings with its placeholders' values.
 type debugEnv struct {
 	root string
-	p    *profile.Profile
+	p    *dap.Config
 	vars map[string]string
 	argv []string
 	port int
 }
 
-// loadDebug reads the profile's debug section and fills the built-in
+// loadDebug reads reliab-debug.yaml and fills the built-in
 // placeholders; pid is 0 when not attaching.
 func loadDebug(file string, sets []string, pid int) (*debugEnv, error) {
 	root, err := repoRoot()
 	if err != nil {
 		return nil, withCode(ExitConfig, err)
 	}
-	p, err := profile.Load(filepath.Join(root, file))
+	p, err := dap.LoadConfig(filepath.Join(root, file))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, withCode(ExitConfig, fmt.Errorf("no %s: reliab docs debug has the file for each adapter", file))
+	}
 	if err != nil {
 		return nil, withCode(ExitConfig, err)
-	}
-	if p.Debug == nil {
-		return nil, withCode(ExitConfig, fmt.Errorf("%s has no debug section: reliab docs debug has the block for each adapter; the profile is protected, so a person adds it", file))
 	}
 	vars, err := dap.ParseSets(sets)
 	if err != nil {
@@ -64,18 +63,18 @@ func loadDebug(file string, sets []string, pid int) (*debugEnv, error) {
 		vars["pid"] = strconv.Itoa(pid)
 	}
 	env := &debugEnv{root: root, p: p, vars: vars}
-	if p.Debug.Adapter.Transport == dap.TransportTCP {
+	if p.Adapter.Transport == dap.TransportTCP {
 		if env.port, err = dap.FreePort(); err != nil {
 			return nil, withCode(ExitConfig, fmt.Errorf("no free loopback port: %w", err))
 		}
 		vars["port"] = strconv.Itoa(env.port)
 	}
-	words, err := dap.SplitCommand(p.Debug.Adapter.Run)
+	words, err := dap.SplitCommand(p.Adapter.Run)
 	if err != nil {
-		return nil, withCode(ExitConfig, fmt.Errorf("debug.adapter.run: %w", err))
+		return nil, withCode(ExitConfig, fmt.Errorf("adapter.run: %w", err))
 	}
 	if len(words) == 0 {
-		return nil, withCode(ExitConfig, errors.New("debug.adapter.run is empty"))
+		return nil, withCode(ExitConfig, errors.New("adapter.run is empty"))
 	}
 	missing := map[string]bool{}
 	for _, w := range words {
@@ -87,17 +86,17 @@ func loadDebug(file string, sets []string, pid int) (*debugEnv, error) {
 			names = append(names, "{"+n+"}")
 		}
 		sort.Strings(names)
-		return nil, withCode(ExitConfig, fmt.Errorf("unexpanded placeholder %s in debug.adapter.run; give each with --set name=value", strings.Join(names, ", ")))
+		return nil, withCode(ExitConfig, fmt.Errorf("unexpanded placeholder %s in adapter.run; give each with --set name=value", strings.Join(names, ", ")))
 	}
 	return env, nil
 }
 
 // start starts the adapter with its output in .reliab/debug/adapter.log.
 func (e *debugEnv) start(ctx context.Context) (*dap.Client, func(), error) {
-	a := e.p.Debug.Adapter
+	a := e.p.Adapter
 	var ready *regexp.Regexp
 	if a.Ready != "" {
-		ready = regexp.MustCompile(a.Ready) // profile.Parse has compiled it
+		ready = regexp.MustCompile(a.Ready) // dap.ParseConfig has compiled it
 	}
 	dir := filepath.Join(e.root, filepath.FromSlash(dap.Dir))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -140,7 +139,7 @@ func adapterFailure(cmd *cobra.Command, err error, output string) error {
 }
 
 func newDebugCmd() *cobra.Command {
-	return group("debug", "Run a test or program under the profile's debug adapter and record what it shows",
+	return group("debug", "Run a test or program under the debug adapter in reliab-debug.yaml and record what it shows",
 		newDebugProbeCmd(), newDebugSessionCmd(dap.ModeRun), newDebugSessionCmd(dap.ModeAttach))
 }
 
@@ -151,7 +150,7 @@ func newDebugProbeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "probe",
 		Short: "Start the debug adapter, print its capabilities, and disconnect",
-		Long: "Starts the profile's debug adapter, sends initialize, prints the capabilities that matter to\n" +
+		Long: "Starts the debug adapter in reliab-debug.yaml, sends initialize, prints the capabilities that matter to\n" +
 			"reliab debug run (exception breakpoint filters, conditional breakpoints, log points,\n" +
 			"terminate), and disconnects. Run it after adding a debug section, and first when debug run\n" +
 			"misbehaves. Exit 0 when the adapter answered; 2 with the adapter's output when it did not.",
@@ -181,11 +180,11 @@ func newDebugProbeCmd() *cobra.Command {
 				enc.SetIndent("", "  ")
 				return enc.Encode(caps)
 			}
-			renderCaps(out, strings.Join(env.argv, " "), env.p.Debug.Adapter.Transport, caps)
+			renderCaps(out, strings.Join(env.argv, " "), env.p.Adapter.Transport, caps)
 			return nil
 		},
 	}
-	cmd.Flags().StringVarP(&file, "file", "f", profile.DefaultPath, "profile, relative to the repo root")
+	cmd.Flags().StringVarP(&file, "file", "f", dap.ConfigPath, "debug settings, relative to the repo root")
 	cmd.Flags().StringArrayVar(&sets, "set", nil, "fill a {name} placeholder in debug.adapter.run: name=value (repeat)")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print the adapter's capabilities as DAP JSON")
 	return cmd
@@ -233,7 +232,7 @@ func newDebugSessionCmd(mode string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   mode,
 		Short: "Run a test or program under the debug adapter, record each stop, and write a transcript",
-		Long: "Expands the profile's debug." + block + " block, starts the adapter, sets each --break (grouped per\n" +
+		Long: "Expands reliab-debug.yaml's " + block + " block, starts the adapter, sets each --break (grouped per\n" +
 			"file; 'file:line if cond' when the adapter supports conditions), and with --catch the adapter's\n" +
 			"default exception filters. Each stop records the reason, the top --frames frames, the top frame's\n" +
 			"locals to --depth, and each --dump evaluated there (an error is recorded, never fatal); then it\n" +
@@ -241,7 +240,7 @@ func newDebugSessionCmd(mode string) *cobra.Command {
 			"program exits. A --break the adapter does not verify is a warning before the program runs.\n" +
 			"The transcript goes to " + dap.Dir + "/<yyyymmdd-hhmmss>.json and last.json; --json prints it.\n" +
 			"Exit codes: 0 the program ran to its end with no exception stop, 1 an exception stop or a stop\n" +
-			"or timeout limit ended it, 2 the profile, the adapter, or the " + block + " failed before the program\n" +
+			"or timeout limit ended it, 2 reliab-debug.yaml, the adapter, or the " + block + " failed before the program\n" +
 			"ran, 3 --budget passed.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -252,18 +251,18 @@ func newDebugSessionCmd(mode string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			raw := env.p.Debug.Launch
+			raw := env.p.Launch
 			if mode == dap.ModeAttach {
-				raw = env.p.Debug.Attach
+				raw = env.p.Attach
 			}
 			if raw == nil {
-				return withCode(ExitConfig, fmt.Errorf("the profile's debug section has no %s block", block))
+				return withCode(ExitConfig, fmt.Errorf("reliab-debug.yaml has no %s block", block))
 			}
-			expanded, err := dap.Expand("debug."+block, raw, env.vars)
+			expanded, err := dap.Expand(block, raw, env.vars)
 			if err != nil {
 				return withCode(ExitConfig, err)
 			}
-			paths := dap.NewPathMapper(env.root, env.p.Debug.SourceRoot)
+			paths := dap.NewPathMapper(env.root, env.p.SourceRoot)
 			opt := dap.Options{
 				Mode: mode, Arguments: expanded.(map[string]any), Dumps: dumps,
 				Catch: catch, CatchFilters: catchFilters, Frames: frames, Depth: depth, MaxStops: maxStops,
@@ -279,7 +278,7 @@ func newDebugSessionCmd(mode string) *cobra.Command {
 			out := cmd.OutOrStdout()
 			tr := &dap.Transcript{
 				SchemaVersion: dap.TranscriptVersion,
-				Adapter:       dap.AdapterInfo{Run: strings.Join(env.argv, " "), Transport: env.p.Debug.Adapter.Transport, Port: env.port},
+				Adapter:       dap.AdapterInfo{Run: strings.Join(env.argv, " "), Transport: env.p.Adapter.Transport, Port: env.port},
 			}
 			opt.OnReady = func(t *dap.Transcript) {
 				if !asJSON {
@@ -331,7 +330,7 @@ func newDebugSessionCmd(mode string) *cobra.Command {
 		},
 	}
 	f := cmd.Flags()
-	f.StringVarP(&file, "file", "f", profile.DefaultPath, "profile, relative to the repo root")
+	f.StringVarP(&file, "file", "f", dap.ConfigPath, "debug settings, relative to the repo root")
 	f.StringArrayVar(&sets, "set", nil, "fill a {name} placeholder in the debug section: name=value (repeat)")
 	f.StringArrayVar(&breaks, "break", nil, "a breakpoint, file:line or 'file:line if condition'; the file is relative to the repo root (repeat)")
 	f.StringArrayVar(&dumps, "dump", nil, "an expression to evaluate in the top frame at each stop (repeat)")

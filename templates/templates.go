@@ -1,13 +1,8 @@
-// Package templates embeds what reliab profile init writes into a repository.
+// Package templates holds the testing-rules block for a repository's
+// AGENTS.md and example reliab.yaml files.
 package templates
 
 import _ "embed"
-
-// Profile is the reliability-profile.yaml skeleton. %NAME% and %CONDITION%
-// are replaced.
-//
-//go:embed profile.yaml
-var Profile string
 
 // Agents is the testing-rules section added to AGENTS.md, between markers.
 //

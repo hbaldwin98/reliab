@@ -29,22 +29,26 @@ func TestCommandWord(t *testing.T) {
 	}
 }
 
-// knowledge/decisions/protected-path-approval.md: a profile that does not
-// protect itself is a warning; one that does is not mentioned.
-func TestDoctorWarnsWhenTheProfileIsUnprotected(t *testing.T) {
-	check := func(extra string) *Check {
-		t.Helper()
-		for _, c := range Run(testrepo.New(t, extra+"commands:\n  build: \"true\"\n")) {
-			if c.Name == "profile protection" {
+// Source: README "Install" and "reliab.yaml": doctor fails without a valid
+// reliab.yaml and passes with one.
+func TestDoctorReadsReliabYAML(t *testing.T) {
+	find := func(cs []Check, name string) *Check {
+		for _, c := range cs {
+			if c.Name == name {
 				return &c
 			}
 		}
 		return nil
 	}
-	if c := check(""); c == nil || c.Status != Warn {
-		t.Errorf("unprotected profile: %+v", c)
+	cs := Run(testrepo.New(t, ""))
+	if c := find(cs, "reliab.yaml"); c == nil || c.Status != Fail || !Failed(cs) {
+		t.Fatalf("no reliab.yaml: %+v", cs)
 	}
-	if c := check("protected_paths: [reliability-profile.yaml]\n"); c != nil {
-		t.Errorf("protected profile: %+v", c)
+	cs = Run(testrepo.New(t, "version: 1\ncommands:\n  build: { about: x, pr: \"true\" }\n"))
+	if c := find(cs, "reliab.yaml"); c == nil || c.Status != OK || c.Detail != "1 commands" {
+		t.Fatalf("valid reliab.yaml: %+v", cs)
+	}
+	if c := find(cs, ".gitignore"); c == nil || c.Status != OK {
+		t.Fatalf(".gitignore: %+v", c)
 	}
 }

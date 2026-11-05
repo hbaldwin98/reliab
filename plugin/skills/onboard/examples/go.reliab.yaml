@@ -1,0 +1,94 @@
+# Example reliab.yaml for a made-up go service. Tools and paths are
+# illustrative: write yours from what your project runs.
+version: 1
+
+commands:
+  build:
+    about: Compile everything. If this fails, nothing else is worth running.
+    change: go build ./...
+    pr: go build ./...
+    audit: go build ./...
+
+  analyzers:
+    about: 'Static analysis. Each issue is a finding at a file and line: fix the code, never silence the analyzer to pass.'
+    change: rm -f .reliab/out/lint.json; golangci-lint run --output.json.path .reliab/out/lint.json ./...; reliab-adapter-golangci-lint -exit $? .reliab/out/lint.json .reliab/out/analyzers.json
+    pr: rm -f .reliab/out/lint.json; golangci-lint run --output.json.path .reliab/out/lint.json ./...; reliab-adapter-golangci-lint -exit $? .reliab/out/lint.json .reliab/out/analyzers.json
+    audit: rm -f .reliab/out/lint.json; golangci-lint run --output.json.path .reliab/out/lint.json ./...; reliab-adapter-golangci-lint -exit $? .reliab/out/lint.json .reliab/out/analyzers.json
+    output: { file: .reliab/out/analyzers.json, parse: findings }
+    after: [build]
+
+  unit:
+    about: Unit tests. A failing test is a product bug (fix the code) or a wrong test (fix the test; never loosen an assertion).
+    change: "gotestsum --junitfile .reliab/out/unit.xml -- {projects}"
+    pr: gotestsum --junitfile .reliab/out/unit.xml -- ./...
+    audit: gotestsum --junitfile .reliab/out/unit.xml -- ./...
+    output: { file: .reliab/out/unit.xml, parse: junit }
+    after: [build]
+
+  e2e:
+    about: End-to-end tests through the whole system.
+    pr: sh scripts/reliab/e2e.sh .reliab/out/e2e.xml
+    audit: sh scripts/reliab/e2e.sh .reliab/out/e2e.xml
+    output: { file: .reliab/out/e2e.xml, parse: junit }
+    after: [build]
+
+  properties:
+    about: 'Property tests: rules that must hold for any input. A failure prints a shrunk counterexample; reproduce it from its seed.'
+    change: gotestsum --junitfile .reliab/out/properties.xml -- -run Property ./internal/... -rapid.checks=100 -rapid.seed=$RELIAB_SEED
+    pr: gotestsum --junitfile .reliab/out/properties.xml -- -run Property ./internal/... -rapid.checks=1000 -rapid.seed=$RELIAB_SEED
+    audit: gotestsum --junitfile .reliab/out/properties.xml -- -run Property ./internal/... -rapid.checks=10000 -rapid.seed=$RELIAB_SEED
+    output: { file: .reliab/out/properties.xml, parse: junit }
+    after: [build]
+
+  contracts:
+    about: 'Consumer contract tests: does this service still honor what its consumers expect?'
+    change: "rm -rf .reliab/out/pacts; PACT_DIR=\"$PWD/.reliab/out/pacts\" gotestsum --junitfile .reliab/out/contracts.xml -- -tags pact ./internal/inventory/...; reliab-adapter-pact -exit $? -junit .reliab/out/contracts.xml .reliab/out/pacts pacts .reliab/out/contracts.json"
+    pr: "rm -rf .reliab/out/pacts; PACT_DIR=\"$PWD/.reliab/out/pacts\" gotestsum --junitfile .reliab/out/contracts.xml -- -tags pact ./internal/inventory/...; reliab-adapter-pact -exit $? -junit .reliab/out/contracts.xml .reliab/out/pacts pacts .reliab/out/contracts.json"
+    audit: "rm -rf .reliab/out/pacts; PACT_DIR=\"$PWD/.reliab/out/pacts\" gotestsum --junitfile .reliab/out/contracts.xml -- -tags pact ./internal/inventory/...; reliab-adapter-pact -exit $? -junit .reliab/out/contracts.xml .reliab/out/pacts pacts .reliab/out/contracts.json"
+    output: { file: .reliab/out/contracts.json, parse: findings }
+    after: [build]
+
+  api_fuzz:
+    about: API fuzzing against the running service.
+    pr: sh scripts/reliab/api-fuzz.sh .reliab/out/api-fuzz.xml $RELIAB_SEED
+    audit: sh scripts/reliab/api-fuzz.sh .reliab/out/api-fuzz.xml $RELIAB_SEED
+    output: { file: .reliab/out/api-fuzz.xml, parse: junit }
+    after: [build]
+    exclusive: true
+
+  fuzz:
+    about: 'Fuzzing: random and malformed input. A crash is saved as a reproducible case.'
+    pr: sh scripts/reliab/fuzz.sh 60 .reliab/out/fuzz.xml
+    audit: sh scripts/reliab/fuzz.sh 1800 .reliab/out/fuzz.xml
+    output: { file: .reliab/out/fuzz.xml, parse: junit }
+    after: [build]
+    exclusive: true
+
+  faults_db:
+    about: Fault injection on the data store.
+    pr: gotestsum --junitfile .reliab/out/faults-db.xml -- -tags faults -run Fault ./internal/store/...
+    audit: gotestsum --junitfile .reliab/out/faults-db.xml -- -tags faults -run Fault ./internal/store/...
+    output: { file: .reliab/out/faults-db.xml, parse: junit }
+    after: [build]
+
+  faults_http:
+    about: Fault injection on HTTP dependencies.
+    pr: gotestsum --junitfile .reliab/out/faults-http.xml -- -run Fault ./internal/payments/...
+    audit: gotestsum --junitfile .reliab/out/faults-http.xml -- -run Fault ./internal/payments/...
+    output: { file: .reliab/out/faults-http.xml, parse: junit }
+    after: [build]
+
+  mutation:
+    about: 'Mutation testing. A surviving mutant means no test checks that line''s behavior: add a test that does, or say why none can.'
+    pr: sh scripts/reliab/mutation.sh changed origin/main
+    audit: sh scripts/reliab/mutation.sh full
+    output: { file: .reliab/out/mutation.json, parse: findings }
+    after: [unit]
+    exclusive: true
+
+  coverage:
+    about: 'Coverage: which lines the tests reach.'
+    pr: go test -coverprofile=.reliab/out/cover.out ./... && gocover-cobertura < .reliab/out/cover.out > .reliab/out/coverage.xml
+    audit: go test -coverprofile=.reliab/out/cover.out ./... && gocover-cobertura < .reliab/out/cover.out > .reliab/out/coverage.xml
+    output: { file: .reliab/out/coverage.xml, parse: cobertura }
+    after: [unit]

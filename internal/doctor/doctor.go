@@ -1,5 +1,5 @@
-// Package doctor checks that reliab can run in a repository and that the
-// repository is set up the way reliab profile init leaves it.
+// Package doctor checks that reliab can run in a repository: git, a POSIX
+// shell, a valid reliab.yaml, and the tools its commands start.
 package doctor
 
 import (
@@ -7,14 +7,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/hbaldwin98/reliab/internal/dap"
 	"github.com/hbaldwin98/reliab/internal/gitx"
-	"github.com/hbaldwin98/reliab/internal/profile"
-	"github.com/hbaldwin98/reliab/internal/verify"
+	"github.com/hbaldwin98/reliab/internal/runner"
 	"github.com/hbaldwin98/reliab/internal/version"
 )
 
@@ -46,60 +43,34 @@ func Run(dir string) []Check {
 	}
 	add("repository", OK, root)
 
-	if sh, err := verify.FindShell(); err != nil {
+	if sh, err := runner.FindShell(); err != nil {
 		add("shell", Fail, err.Error())
 	} else {
 		add("shell", OK, sh)
 	}
 
-	p, err := profile.Load(filepath.Join(root, profile.DefaultPath))
+	cfg, err := runner.Load(filepath.Join(root, runner.DefaultPath))
 	if err != nil {
-		add("profile", Fail, err.Error())
+		add(runner.DefaultPath, Fail, err.Error())
 		return out
 	}
-	add("profile", OK, fmt.Sprintf("%s (%s)", p.Name, p.StartingCondition))
-	// The profile holds the thresholds, relevance rules, and baseline a
-	// change must pass, so it is an oracle too
-	// (knowledge/decisions/protected-path-approval.md).
-	if !profile.Protects(p, profile.DefaultPath) {
-		add("profile protection", Warn, profile.DefaultPath+" is not in protected_paths, so an agent can edit its thresholds, relevance rules, and baseline; run reliab profile init to add it")
-	}
+	add(runner.DefaultPath, OK, fmt.Sprintf("%d commands", len(cfg.Commands)))
 
-	ignored := exec.Command("git", "-C", root, "check-ignore", "-q", ".reliab/reports/x.json").Run() == nil
+	ignored := exec.Command("git", "-C", root, "check-ignore", "-q", ".reliab/run/x.log").Run() == nil
 	if ignored {
 		add(".gitignore", OK, ".reliab/ is ignored")
 	} else {
-		add(".gitignore", Fail, ".reliab/ is not ignored; reports would be committed and make every report stale")
+		add(".gitignore", Warn, ".reliab/ is not ignored; run logs and tool output would show as changes")
 	}
 
 	out = append(out, versionPin(root)...)
-	out = append(out, tools(p)...)
-	out = append(out, debugAdapter(p)...)
-	out = append(out, missingRoles(p)...)
-	return out
-}
-
-// missingRoles warns about each role the codebase needs but has no tool for
-// yet: its commands are skipped as role-missing until a person adds one.
-func missingRoles(p *profile.Profile) []Check {
-	ids := make([]string, 0, len(p.Roles))
-	for id, r := range p.Roles {
-		if r.Missing {
-			ids = append(ids, id)
-		}
-	}
-	sort.Slice(ids, func(i, j int) bool { return roleNumber(ids[i]) < roleNumber(ids[j]) })
-	var out []Check
-	for _, id := range ids {
-		out = append(out, Check{"role " + id, Warn, "needed but missing: " + p.Roles[id].Reason})
+	out = append(out, tools(cfg)...)
+	if dc, err := dap.LoadConfig(filepath.Join(root, dap.ConfigPath)); err == nil {
+		out = append(out, debugAdapter(dc)...)
+	} else if !os.IsNotExist(err) {
+		add("debug adapter", Fail, err.Error())
 	}
 	return out
-}
-
-// roleNumber orders T2 before T10.
-func roleNumber(id string) int {
-	n, _ := strconv.Atoi(strings.TrimPrefix(id, "T"))
-	return n
 }
 
 func versionPin(root string) []Check {
@@ -117,48 +88,42 @@ func versionPin(root string) []Check {
 	return []Check{{"version pin", OK, pin}}
 }
 
-// tools checks that the first word of every profile command is on PATH. A
-// missing tool is what stage S0 is for, so it warns rather than fails.
-func tools(p *profile.Profile) []Check {
-	ids := make([]string, 0, len(p.Commands))
-	for id := range p.Commands {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
+// tools checks that the program each command line runs is on PATH. A
+// missing tool warns: the command fails when it runs, saying so.
+func tools(cfg *runner.Config) []Check {
 	var out []Check
-	for _, id := range ids {
-		bin, ok := commandWord(p.Commands[id].Run)
-		if !ok {
-			continue
-		}
-		if shellBuiltins[bin] {
-			out = append(out, Check{"command " + id, OK, bin + " (shell builtin)"})
-			continue
-		}
-		if _, err := exec.LookPath(bin); err != nil {
-			out = append(out, Check{"command " + id, Warn, bin + " is not on PATH"})
-		} else {
-			out = append(out, Check{"command " + id, OK, bin})
+	for _, name := range cfg.Names() {
+		c := cfg.Commands[name]
+		seen := map[string]bool{}
+		for _, line := range []string{c.Change, c.PR, c.Audit, c.Targeted} {
+			bin, ok := commandWord(line)
+			if !ok || seen[bin] {
+				continue
+			}
+			seen[bin] = true
+			switch _, err := exec.LookPath(bin); {
+			case shellBuiltins[bin]:
+				out = append(out, Check{"command " + name, OK, bin + " (shell builtin)"})
+			case err != nil:
+				out = append(out, Check{"command " + name, Warn, bin + " is not on PATH"})
+			default:
+				out = append(out, Check{"command " + name, OK, bin})
+			}
 		}
 	}
 	return out
 }
 
-// debugAdapter checks that the debug adapter's first word is on PATH when
-// the profile has a debug section (knowledge/decisions/debug-adapter-seam.md).
-// Like a missing tool, a missing adapter warns.
-func debugAdapter(p *profile.Profile) []Check {
-	if p.Debug == nil {
-		return nil
-	}
-	a := p.Debug.Adapter
-	// if statements, not case expressions, so gremlins sees them covered.
+// debugAdapter checks that the debug adapter's program is on PATH
+// (knowledge/decisions/debug-adapter-seam.md). A missing adapter warns.
+func debugAdapter(c *dap.Config) []Check {
+	a := c.Adapter
 	words, err := dap.SplitCommand(a.Run)
 	if err != nil {
-		return []Check{{"debug adapter", Fail, "debug.adapter.run: " + err.Error()}}
+		return []Check{{"debug adapter", Fail, "adapter.run: " + err.Error()}}
 	}
 	if len(words) == 0 {
-		return []Check{{"debug adapter", Fail, "debug.adapter.run is empty"}}
+		return []Check{{"debug adapter", Fail, "adapter.run is empty"}}
 	}
 	if strings.Contains(words[0], "{") {
 		return []Check{{"debug adapter", OK, words[0] + " (" + a.Transport + "; a placeholder, checked when reliab debug runs)"}}
