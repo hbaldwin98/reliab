@@ -1,5 +1,8 @@
 # Update Log
 
+## 2026-11-05
+* **Update**: [profile-v2](/decisions/profile-v2.md) is built and released as v0.5.0 (breaking): `reliab.yaml` and `reliab run change | pr | audit` with `--plan`, `--target` (project, folder, file, `file#Function`), `--seed`, a parallel scheduler with `after` and `exclusive`, and per-command `timeout` and `threshold`. `reliab-debug.yaml` holds the debug adapter. Removed: verify, tiers, roles, report, findings classify and ack, approve, gate, baseline, characterize, hooks, the reviewer agent and `reliability-profile.yaml`; `reliab profile migrate` converts an old profile. Earlier decisions about those features are superseded.
+
 ## 2026-10-29
 * **Update**: [consumer-contracts](/decisions/consumer-contracts.md) is built: `contracts` in the schema and every tier's defaults (T16), `reliab-adapter-pact` (`cmd/adapters/pact`, shipped in the release archive), route advice that reads a contract's labels as demands on the provider, a T16 step in the onboard skill, and a Pact contracts command in the Go example profile. Settled while building: a dropped contract is reported only after a clean, unscoped run, and a clean run that wrote no contract while accepted ones exist is an error.
 * **Creation**: Added [consumer-contracts](/decisions/consumer-contracts.md) (draft) and the role [T16](/roles/t16-consumer-contracts.md): a `contracts` command id in every tier runs consumer tests against mocks of owned services and writes their contracts under `.reliab/out`; `reliab-adapter-pact` labels each against its committed, protected contract, and a person approves a change. Consumer side only: provider verification and broker publishing stay outside reliab.
